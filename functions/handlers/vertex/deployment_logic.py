@@ -61,7 +61,9 @@ def _deploy_agent_to_vertex_logic(req: https_fn.CallableRequest):
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INTERNAL, message=error_msg)
 
         # --- Deployment to Vertex AI ---
-    requirements_list = ["google-cloud-aiplatform[adk,agent_engines]>=1.93.1", "gofannon"]
+    requirements_list = ["google-cloud-aiplatform[adk,agent_engines]>=1.93.1",
+                         "gofannon",
+                         "pdfplumber"] # work around until GOFANNON-322 is fixed
     # Use original_config_name for a more user-friendly display name generation base
     deployment_display_name = generate_vertex_deployment_display_name(original_config_name, agent_doc_id)
 
