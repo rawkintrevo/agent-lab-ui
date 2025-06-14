@@ -1,0 +1,40 @@
+name: Manual Deploy Firebase Functions (Python)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-functions:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'  # Or your desired version
+
+    - name: Install Firebase CLI
+      run: |
+        curl -sL https://firebase.tools | bash
+
+    - name: Authenticate with Firebase
+      env:
+        FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AGENT_WEB_UI }}
+      run: |
+        echo "${FIREBASE_SERVICE_ACCOUNT_KEY}" > "${HOME}/firebase-key.json"
+        firebase auth:login:ci --token "$(jq -r .token <<< "${FIREBASE_SERVICE_ACCOUNT_KEY}")" || true
+        firebase use --add
+
+    - name: Install Python function dependencies
+      run: |
+        cd functions
+        python -m venv venv
+        source venv/bin/activate
+        pip install -r requirements.txt
+
+    - name: Deploy Firebase Functions
+      run: |
+        firebase deploy --only functions --token "$(jq -r .token <<< "${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }})"
