@@ -14,11 +14,9 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 
 import ToolSetupDialog from './ToolSetupDialog';
-import McpAuthDialog from './McpAuthDialog'; // New Auth Dialog
-import { listMcpServerTools } from '../../services/agentService'; // New service import
+import McpAuthDialog from './McpAuthDialog';
+import { listMcpServerTools, listLocalStdioServerTools } from '../../services/agentService'; // Import new stdio service
 
-
-// PREDEFINED_ADK_FUNCTION_TOOLS removed
 
 const getRawManifestUrl = (repoUrlWithOptionalRef) => {
     if (!repoUrlWithOptionalRef) return null;
@@ -66,9 +64,8 @@ const ToolSelector = ({
                           onRefreshGofannon,
                           loadingGofannon,
                           gofannonError,
-                          // isCodeExecutionMode removed
                           onUsedCustomRepoUrlsChange,
-                          onUsedMcpServerUrlsChange // New prop
+                          onUsedMcpServerUrlsChange
                       }) => {
 
     const [isSetupDialogOpen, setIsSetupDialogOpen] = useState(false);
@@ -78,13 +75,19 @@ const ToolSelector = ({
     const [loadedCustomRepos, setLoadedCustomRepos] = useState([]);
     const [loadingCustomRepo, setLoadingCustomRepo] = useState(false);
 
-    // --- New/Modified MCP State ---
+    // --- MCP State ---
     const [mcpServerUrlInput, setMcpServerUrlInput] = useState('');
-    // State now includes auth config for each server
-    const [loadedMcpServers, setLoadedMcpServers] = useState([]); // Array of {url, tools, error, loading, auth}
-    const [loadingMcpServerUrl, setLoadingMcpServerUrl] = useState(null); // Track which server is loading
+    const [loadedMcpServers, setLoadedMcpServers] = useState([]);
+    const [loadingMcpServerUrl, setLoadingMcpServerUrl] = useState(null);
     const [isMcpAuthDialogOpen, setIsMcpAuthDialogOpen] = useState(false);
     const [serverForAuthSetup, setServerForAuthSetup] = useState(null);
+
+    // --- New Local Stdio MCP State ---
+    const [stdioCommand, setStdioCommand] = useState('');
+    const [stdioArgs, setStdioArgs] = useState('');
+    const [stdioEnv, setStdioEnv] = useState('');
+    const [loadedLocalServers, setLoadedLocalServers] = useState([]); // { config, tools, error, loading }
+    const [loadingLocalServer, setLoadingLocalServer] = useState(false);
 
 
     const allDisplayableTools = useMemo(() => {
@@ -95,21 +98,35 @@ const ToolSelector = ({
             }
             return acc;
         }, []);
-        const mcpToolsWithSource = loadedMcpServers.reduce((acc, server) => { // Add MCP tools
+        const mcpToolsWithSource = loadedMcpServers.reduce((acc, server) => {
             if (server.tools) {
                 server.tools.forEach(t => acc.push({
-                    ...t, // name, description from MCP server
-                    id: `mcp:${server.url}:${t.name}`, // Create a unique ID for UI selection
+                    ...t,
+                    id: `mcp:${server.url}:${t.name}`,
                     mcpServerUrl: server.url,
-                    mcpToolName: t.name, // Original name for backend filter
+                    mcpToolName: t.name,
                     type: 'mcp',
-                    auth: server.auth // *** Attach the server's auth config to the tool ***
+                    auth: server.auth
                 }));
             }
             return acc;
         }, []);
-        return [...gofannonWithSource, ...customToolsWithSource, ...mcpToolsWithSource];
-    }, [availableGofannonTools, loadedCustomRepos, loadedMcpServers]);
+        // New: Add local stdio tools to the list
+        const localStdioToolsWithSource = loadedLocalServers.reduce((acc, server) => {
+            if (server.tools) {
+                server.tools.forEach(t => acc.push({
+                    ...t,
+                    id: `mcp_stdio:${server.config.command}:${t.name}`, // Unique ID for stdio tools
+                    mcpToolName: t.name,
+                    type: 'mcp', // We can treat it as MCP type for backend processing
+                    localStdioConfig: server.config // Attach the stdio config
+                }));
+            }
+            return acc;
+        }, []);
+
+        return [...gofannonWithSource, ...customToolsWithSource, ...mcpToolsWithSource, ...localStdioToolsWithSource];
+    }, [availableGofannonTools, loadedCustomRepos, loadedMcpServers, loadedLocalServers]);
 
     const groupedDisplayableTools = useMemo(() => {
         if (!allDisplayableTools || allDisplayableTools.length === 0) {
@@ -138,12 +155,16 @@ const ToolSelector = ({
                 } catch (e) {
                     groupName = `Custom Repo: ${tool.sourceRepoUrl}`;
                 }
-            } else if (tool.type === 'mcp') { // Group MCP tools by server URL
-                try {
-                    const urlObj = new URL(tool.mcpServerUrl);
-                    groupName = `MCP Server: ${urlObj.protocol}//${urlObj.hostname}${urlObj.port ? `:${urlObj.port}`:''}${urlObj.pathname === '/' ? '' : urlObj.pathname}`;
-                } catch(e) {
-                    groupName = `MCP Server: ${tool.mcpServerUrl}`;
+            } else if (tool.type === 'mcp') {
+                if (tool.localStdioConfig) {
+                    groupName = `Local Stdio Server: ${tool.localStdioConfig.command}`;
+                } else {
+                    try {
+                        const urlObj = new URL(tool.mcpServerUrl);
+                        groupName = `MCP Server: ${urlObj.protocol}//${urlObj.hostname}${urlObj.port ? `:${urlObj.port}`:''}${urlObj.pathname === '/' ? '' : urlObj.pathname}`;
+                    } catch(e) {
+                        groupName = `MCP Server: ${tool.mcpServerUrl}`;
+                    }
                 }
             }
 
@@ -206,7 +227,6 @@ const ToolSelector = ({
         setLoadingCustomRepo(false);
     };
 
-    // --- New/Modified MCP Handlers ---
     const handleAddMcpServer = () => {
         if (!mcpServerUrlInput.trim()) return;
         const serverUrl = mcpServerUrlInput.trim();
@@ -223,12 +243,11 @@ const ToolSelector = ({
         if (serverIndex === -1) return;
 
         setLoadingMcpServerUrl(serverUrl);
-        // Reset previous tools/error for a fresh load
         setLoadedMcpServers(prev => prev.map((s, i) => i === serverIndex ? { ...s, loading: true, error: null, tools: null } : s));
 
         try {
             const serverToLoad = loadedMcpServers[serverIndex];
-            const result = await listMcpServerTools(serverUrl, serverToLoad.auth); // Pass auth config
+            const result = await listMcpServerTools(serverUrl, serverToLoad.auth);
             if (result.success && Array.isArray(result.tools)) {
                 setLoadedMcpServers(prev => prev.map((s, i) => i === serverIndex ? { ...s, tools: result.tools, error: null, loading: false } : s));
             } else {
@@ -250,8 +269,42 @@ const ToolSelector = ({
         setLoadedMcpServers(prev =>
             prev.map(s => s.url === serverUrl ? { ...s, auth: authData } : s)
         );
-        // After saving, you might want to automatically re-fetch tools
         handleLoadMcpServerTools(serverUrl);
+    };
+
+    // --- New Local Stdio Handlers ---
+    const handleLoadLocalServerTools = async () => {
+        if (!stdioCommand.trim()) return;
+
+        setLoadingLocalServer(true);
+        const envObj = stdioEnv.split('\n').reduce((acc, line) => {
+            const [key, ...valParts] = line.split('=');
+            if (key.trim()) {
+                acc[key.trim()] = valParts.join('=').trim();
+            }
+            return acc;
+        }, {});
+
+        const config = { command: stdioCommand.trim(), args: stdioArgs.trim(), env: envObj };
+
+        const newLocalServer = { config, tools: null, error: null, loading: true };
+        setLoadedLocalServers(prev => [...prev, newLocalServer]);
+
+        try {
+            const result = await listLocalStdioServerTools(config);
+            if (result.success && Array.isArray(result.tools)) {
+                setLoadedLocalServers(prev => prev.map(s => s.config === config ? { ...s, tools: result.tools, error: null, loading: false } : s));
+            } else {
+                setLoadedLocalServers(prev => prev.map(s => s.config === config ? { ...s, error: result.message || "Failed to load tools.", loading: false } : s));
+            }
+        } catch (error) {
+            setLoadedLocalServers(prev => prev.map(s => s.config === config ? { ...s, error: error.message || "An unexpected error occurred.", loading: false } : s));
+        } finally {
+            setLoadingLocalServer(false);
+            setStdioCommand('');
+            setStdioArgs('');
+            setStdioEnv('');
+        }
     };
 
 
@@ -269,7 +322,6 @@ const ToolSelector = ({
             newSelectedTools = selectedTools.filter(st => st.id !== toolManifestEntry.id);
         } else {
             let toolBaseData;
-            const sourceRepoUrlForBackend = toolManifestEntry.sourceRepoUrl; // For Gofannon/Custom
 
             if (toolTypeFromManifest === 'gofannon' || toolTypeFromManifest === 'custom_repo') {
                 toolBaseData = {
@@ -278,17 +330,19 @@ const ToolSelector = ({
                     module_path: toolManifestEntry.module_path,
                     class_name: toolManifestEntry.class_name,
                     type: toolTypeFromManifest,
-                    ...(toolTypeFromManifest === 'custom_repo' && { sourceRepoUrl: sourceRepoUrlForBackend })
+                    ...(toolTypeFromManifest === 'custom_repo' && { sourceRepoUrl: toolManifestEntry.sourceRepoUrl })
                 };
-            } else if (toolTypeFromManifest === 'mcp') { // Handle MCP tools
+            } else if (toolTypeFromManifest === 'mcp') {
                 toolBaseData = {
-                    id: toolManifestEntry.id, // UI unique ID
+                    id: toolManifestEntry.id,
                     name: toolManifestEntry.name,
                     description: toolManifestEntry.description,
                     type: 'mcp',
-                    mcpServerUrl: toolManifestEntry.mcpServerUrl,
                     mcpToolName: toolManifestEntry.mcpToolName,
-                    auth: toolManifestEntry.auth // *** IMPORTANT: Persist auth config ***
+                    // Conditionally add remote or local config
+                    ...(toolManifestEntry.mcpServerUrl && { mcpServerUrl: toolManifestEntry.mcpServerUrl }),
+                    ...(toolManifestEntry.auth && { auth: toolManifestEntry.auth }),
+                    ...(toolManifestEntry.localStdioConfig && { localStdioConfig: toolManifestEntry.localStdioConfig }),
                 };
             }
             else {
@@ -303,12 +357,14 @@ const ToolSelector = ({
             }
         }
         onSelectedToolsChange(newSelectedTools);
+        // Note: The parent form handlers onUsed...Change are now less critical if config is embedded,
+        // but we can keep them for top-level dependency tracking if needed.
         const currentCustomRepoUrls = newSelectedTools
             .filter(st => st.type === 'custom_repo' && st.sourceRepoUrl)
             .map(st => st.sourceRepoUrl);
         onUsedCustomRepoUrlsChange(Array.from(new Set(currentCustomRepoUrls)));
 
-        const currentMcpServerUrls = newSelectedTools // Update MCP Server URLs for parent form
+        const currentMcpServerUrls = newSelectedTools
             .filter(st => st.type === 'mcp' && st.mcpServerUrl)
             .map(st => st.mcpServerUrl);
         onUsedMcpServerUrlsChange(Array.from(new Set(currentMcpServerUrls)));
@@ -361,7 +417,10 @@ const ToolSelector = ({
 
     const getToolDisplayName = (tool) => {
         let displayName = tool.name;
-        if (tool.type === 'mcp') {
+        if (tool.localStdioConfig) {
+            displayName += ` (from Local: ${tool.localStdioConfig.command})`
+        }
+        else if (tool.mcpServerUrl) {
             let serverDisplay = tool.mcpServerUrl;
             try {
                 const urlObj = new URL(tool.mcpServerUrl);
@@ -398,9 +457,9 @@ const ToolSelector = ({
                     {gofannonError && <Alert severity="error" sx={{ mb: 1 }}>{gofannonError}</Alert>}
                     {loadingGofannon && <Box sx={{display:'flex', justifyContent:'center', my:2}}><CircularProgress size={24} /></Box>}
 
-                    {!loadingGofannon && Object.keys(groupedDisplayableTools).filter(group => !group.startsWith("MCP Server:")).length > 0 ? (
+                    {!loadingGofannon && Object.keys(groupedDisplayableTools).filter(group => !group.startsWith("MCP Server:") && !group.startsWith("Local Stdio Server:")).length > 0 ? (
                         Object.entries(groupedDisplayableTools)
-                            .filter(([groupName]) => !groupName.startsWith("MCP Server:"))
+                            .filter(([groupName]) => !groupName.startsWith("MCP Server:") && !groupName.startsWith("Local Stdio Server:"))
                             .sort(([groupA], [groupB]) => groupA.localeCompare(groupB))
                             .map(([groupName, toolsInGroup]) => (
                                 <Box key={groupName} sx={{ mb: 2 }}>
@@ -474,10 +533,9 @@ const ToolSelector = ({
                 </AccordionDetails>
             </Accordion>
 
-            {/* --- New/Modified MCP Tools Section --- */}
             <Accordion defaultExpanded sx={{ '&.MuiAccordion-root:before': { display: 'none' }, boxShadow: 'none', borderBottom: '1px solid', borderColor: 'divider'}}>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />} aria-controls="mcp-tools-content" id="mcp-tools-header">
-                    <Typography variant="h6" component="h3">Load Tools from MCP Server</Typography>
+                    <Typography variant="h6" component="h3">Load Tools from Remote MCP Server</Typography>
                 </AccordionSummary>
                 <AccordionDetails>
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 2}}>
@@ -486,7 +544,7 @@ const ToolSelector = ({
                     </Box>
                     <FormHelperText>Add an MCP-compliant server URL to discover its tools. Configure authentication for private servers.</FormHelperText>
 
-                    {loadedMcpServers.map((server, index) => (
+                    {loadedMcpServers.map((server) => (
                         <Paper key={server.url} variant="outlined" sx={{ p: 1.5, mt: 2 }}>
                             <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1}}>
                                 <Typography sx={{wordBreak: 'break-all'}}>{server.url}</Typography>
@@ -525,6 +583,92 @@ const ToolSelector = ({
                 </AccordionDetails>
             </Accordion>
 
+            {/* New Stdio Accordion */}
+            <Accordion sx={{ '&.MuiAccordion-root:before': { display: 'none' }, boxShadow: 'none', borderBottom: '1px solid', borderColor: 'divider'}}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />} aria-controls="local-stdio-mcp-content" id="local-stdio-mcp-header">
+                    <Typography variant="h6" component="h3">Load Tools from "Local" (Stdio) MCP Server</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                    <Grid container spacing={2}>
+                        <Grid item xs={12}>
+                            <TextField
+                                fullWidth
+                                label="Command"
+                                variant="outlined"
+                                size="small"
+                                value={stdioCommand}
+                                onChange={(e) => setStdioCommand(e.target.value)}
+                                placeholder="e.g., python3 or /path/to/executable"
+                                helperText="The command to execute in the cloud function environment."
+                            />
+                        </Grid>
+                        <Grid item xs={12}>
+                            <TextField
+                                fullWidth
+                                label="Arguments"
+                                variant="outlined"
+                                size="small"
+                                value={stdioArgs}
+                                onChange={(e) => setStdioArgs(e.target.value)}
+                                placeholder="e.g., -m my_module.server --port 8000"
+                                helperText="Arguments to pass to the command, separated by spaces."
+                            />
+                        </Grid>
+                        <Grid item xs={12}>
+                            <TextField
+                                fullWidth
+                                label="Environment Variables (KEY=VALUE)"
+                                variant="outlined"
+                                size="small"
+                                multiline
+                                rows={2}
+                                value={stdioEnv}
+                                onChange={(e) => setStdioEnv(e.target.value)}
+                                placeholder={"API_KEY=12345\nANOTHER_VAR=abc"}
+                                helperText="One variable per line in KEY=VALUE format."
+                            />
+                        </Grid>
+                        <Grid item xs={12}>
+                            <Button
+                                variant="contained"
+                                onClick={handleLoadLocalServerTools}
+                                disabled={loadingLocalServer || !stdioCommand.trim()}
+                                startIcon={loadingLocalServer ? <CircularProgress size={16} /> : <AddCircleOutlineIcon />}
+                            >
+                                Load Tools from Stdio
+                            </Button>
+                        </Grid>
+                    </Grid>
+                    {loadedLocalServers.map((server, index) => (
+                        <Paper key={`${server.config.command}-${index}`} variant="outlined" sx={{ p: 1.5, mt: 2 }}>
+                            <Typography sx={{wordBreak: 'break-all', fontWeight: 'medium'}}>
+                                Local Server: {server.config.command} {server.config.args}
+                            </Typography>
+                            {server.loading && <Box sx={{display: 'flex', justifyContent: 'center', my: 1}}><CircularProgress/></Box>}
+                            {server.error && <Alert severity="error" sx={{fontSize: '0.8rem', mt:1}}>{server.error}</Alert>}
+                            {server.tools && (
+                                <FormGroup sx={{ pl: 1, mt: 1 }}>
+                                    <Grid container spacing={0}>
+                                        {server.tools.map(tool => {
+                                            const toolId = `mcp_stdio:${server.config.command}:${tool.name}`;
+                                            const isSelected = selectedTools.some(st => st.id === toolId);
+                                            return (
+                                                <Grid item xs={12} sm={6} key={toolId}>
+                                                    <FormControlLabel
+                                                        control={<Checkbox checked={isSelected} onChange={() => handleToolToggle({ ...tool, id: toolId, type: 'mcp', mcpToolName: tool.name, localStdioConfig: server.config }, 'mcp')} name={toolId} size="small"/>}
+                                                        label={<Typography variant="body2" title={tool.description || tool.name}>{tool.name}</Typography>}
+                                                    />
+                                                </Grid>
+                                            );
+                                        })}
+                                    </Grid>
+                                </FormGroup>
+                            )}
+                        </Paper>
+                    ))}
+                </AccordionDetails>
+            </Accordion>
+
 
             {selectedTools.length > 0 && (
                 <Box mt={2}>
@@ -535,7 +679,7 @@ const ToolSelector = ({
                                 {getToolDisplayName(st)} ({
                                 st.type === 'gofannon' ? `Gofannon${st.configuration ? ' (Configured)' : ''}` :
                                     st.type === 'custom_repo' ? `Custom Repo${st.configuration ? ' (Configured)' : ''}` :
-                                        st.type === 'mcp' ? `MCP${st.auth ? ' (Authenticated)' : ''}` :
+                                        st.type === 'mcp' ? `MCP${st.localStdioConfig ? ' (Local Stdio)' : (st.auth ? ' (Authenticated)' : '')}` :
                                             st.type || 'Unknown'
                             })
                             </Typography>

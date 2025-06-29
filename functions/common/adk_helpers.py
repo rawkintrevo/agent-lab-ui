@@ -15,6 +15,7 @@ from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import (
     StreamableHTTPConnectionParams,
     SseServerParams,
+    StdioServerParameters, # Import StdioServerParameters
 )
 
 from google.adk.auth.auth_schemes import AuthScheme
@@ -99,8 +100,10 @@ async def _prepare_agent_kwargs_from_config(agent_config, adk_agent_name: str, c
 
     instantiated_tools = []
     mcp_tools_by_server_and_auth = {}
+    mcp_stdio_tools = [] # New list for stdio tools
     user_defined_tools_config = agent_config.get("tools", [])
     logger.info(f"user_defined_tools_config for agent '{adk_agent_name}': {user_defined_tools_config}")
+
     for tc_idx, tc in enumerate(user_defined_tools_config):
         tool_type = tc.get('type')
         if tool_type is None and tc.get('module_path') and tc.get('class_name'):
@@ -109,21 +112,28 @@ async def _prepare_agent_kwargs_from_config(agent_config, adk_agent_name: str, c
             logger.info(f"Auto-detected tool type 'gofannon' for tool with module_path: {tc.get('module_path')}")
 
         if tool_type == 'mcp':
-            server_url = tc.get('mcpServerUrl')
-            tool_name_on_server = tc.get('mcpToolName')
-            auth_config_from_ui = tc.get('auth') # New: get auth config
-
-            # Create a hashable key for the dictionary
-            auth_key = frozenset(auth_config_from_ui.items()) if auth_config_from_ui else None
-            dict_key = (server_url, auth_key)
-
-            if server_url and tool_name_on_server:
-                if dict_key not in mcp_tools_by_server_and_auth:
-                    mcp_tools_by_server_and_auth[dict_key] = []
-                mcp_tools_by_server_and_auth[dict_key].append(tool_name_on_server)
-                logger.info(f"Queued MCP tool '{tool_name_on_server}' from server '{server_url}' (Auth: {bool(auth_config_from_ui)}) for agent '{adk_agent_name}'.")
+            local_stdio_config = tc.get('localStdioConfig')
+            if local_stdio_config and isinstance(local_stdio_config, dict):
+                # This is a local stdio tool
+                mcp_stdio_tools.append(tc)
+                logger.info(f"Queued Local Stdio MCP tool '{tc.get('mcpToolName')}' for agent '{adk_agent_name}'.")
             else:
-                logger.warn(f"Skipping MCP tool for agent '{adk_agent_name}' due to missing mcpServerUrl or mcpToolName: {tc}")
+                # This is a remote HTTP/SSE tool
+                server_url = tc.get('mcpServerUrl')
+                tool_name_on_server = tc.get('mcpToolName')
+                auth_config_from_ui = tc.get('auth')
+
+                auth_key = frozenset(auth_config_from_ui.items()) if auth_config_from_ui else None
+                dict_key = (server_url, auth_key)
+
+                if server_url and tool_name_on_server:
+                    if dict_key not in mcp_tools_by_server_and_auth:
+                        mcp_tools_by_server_and_auth[dict_key] = []
+                    mcp_tools_by_server_and_auth[dict_key].append(tool_name_on_server)
+                    logger.info(f"Queued Remote MCP tool '{tool_name_on_server}' from server '{server_url}' (Auth: {bool(auth_config_from_ui)}) for agent '{adk_agent_name}'.")
+                else:
+                    logger.warn(f"Skipping Remote MCP tool for agent '{adk_agent_name}' due to missing mcpServerUrl or mcpToolName: {tc}")
+
         elif tool_type == 'gofannon' or tool_type == 'custom_repo':
             try:
                 tool_instance = instantiate_tool(tc)
@@ -135,7 +145,7 @@ async def _prepare_agent_kwargs_from_config(agent_config, adk_agent_name: str, c
             logger.warn(f"Unknown or unhandled tool type '{tool_type}' for agent '{adk_agent_name}'. Tool config: {tc}")
 
 
-            # After iterating all tool_configs, create MCPToolset instances using MCPToolset.from_server
+            # After iterating all tool_configs, create MCPToolset instances for remote servers
     for (server_url, auth_key), tool_names_filter in mcp_tools_by_server_and_auth.items():
         try:
             auth_config_dict = dict(auth_key) if auth_key else None
@@ -160,13 +170,50 @@ async def _prepare_agent_kwargs_from_config(agent_config, adk_agent_name: str, c
                 auth_credential=auth_credential,
                 errlog= None
             )
-            logger.info(f"toolset: {toolset}")
-            mcp_toolset_instance = toolset
-
-            instantiated_tools.append(mcp_toolset_instance)
-            logger.info(f"Successfully created and added MCPToolset for server '{server_url}' to agent '{adk_agent_name}' with {len(unique_tool_filter)} tools filtered.")
+            instantiated_tools.append(toolset)
+            logger.info(f"Successfully created and added Remote MCPToolset for server '{server_url}' to agent '{adk_agent_name}'.")
         except Exception as e_mcp_toolset:
-            logger.error(f"Failed to create MCPToolset for server '{server_url}' for agent '{adk_agent_name}': {type(e_mcp_toolset).__name__} - {e_mcp_toolset}")
+            logger.error(f"Failed to create Remote MCPToolset for server '{server_url}' for agent '{adk_agent_name}': {type(e_mcp_toolset).__name__} - {e_mcp_toolset}")
+
+            # Process local stdio tools
+    stdio_tools_by_command = {}
+    for tool_config in mcp_stdio_tools:
+        stdio_conf = tool_config.get('localStdioConfig', {})
+        command_key_tuple = (
+            stdio_conf.get('command'),
+            tuple(sorted(stdio_conf.get('args', []))), # Make args order-independent for grouping
+            frozenset(stdio_conf.get('env', {}).items()) if stdio_conf.get('env') else None
+        )
+        if command_key_tuple not in stdio_tools_by_command:
+            stdio_tools_by_command[command_key_tuple] = {
+                "config": stdio_conf,
+                "tools": []
+            }
+        stdio_tools_by_command[command_key_tuple]["tools"].append(tool_config.get('mcpToolName'))
+
+    for command_key, data in stdio_tools_by_command.items():
+        try:
+            config = data['config']
+            tool_filter = list(set(data['tools']))
+
+            logger.info(f"Attempting to create Local Stdio MCPToolset for command: '{config.get('command')}' with tool filter: {tool_filter}")
+
+            connection_params = StdioServerParameters(
+                command=config.get('command'),
+                args=config.get('args', []),
+                env=config.get('env')
+            )
+
+            toolset = MCPToolset(
+                connection_params=connection_params,
+                tool_filter=tool_filter,
+                errlog=None
+            )
+            instantiated_tools.append(toolset)
+            logger.info(f"Successfully created and added Local Stdio MCPToolset for command '{config.get('command')}' to agent '{adk_agent_name}'.")
+
+        except Exception as e_stdio_toolset:
+            logger.error(f"Failed to create Local Stdio MCPToolset for command '{command_key[0]}': {type(e_stdio_toolset).__name__} - {e_stdio_toolset}")
 
 
     selected_provider_id = agent_config.get("selectedProviderId")

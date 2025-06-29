@@ -18,8 +18,9 @@ from handlers.context_handler import (
     _fetch_git_repo_contents_logic,
     _process_pdf_content_logic
 )
-# Import new MCP handler
+
 from handlers.mcp_handler import _list_mcp_server_tools_logic_async
+from handlers.local_stdio_handler import _list_local_stdio_server_tools_logic_async
 
 
 # --- Cloud Function Definitions ---
@@ -82,3 +83,9 @@ def process_pdf_content(req: https_fn.CallableRequest):
 def list_mcp_server_tools(req: https_fn.CallableRequest):
     # _list_mcp_server_tools_logic_async is async, so we need to run it in an event loop
     return asyncio.run(_list_mcp_server_tools_logic_async(req))
+
+@https_fn.on_call(memory=options.MemoryOption.GB_1, timeout_sec=120)
+@handle_exceptions_and_log
+def list_local_stdio_server_tools(req: https_fn.CallableRequest):
+    # This logic is also async, so we use asyncio.run
+    return asyncio.run(_list_local_stdio_server_tools_logic_async(req))
