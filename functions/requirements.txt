@@ -15,3 +15,5 @@ PyGithub
 # temp hack is commit hash 0b11bdb6297ce (last before bug introduced)
 git+https://github.com/modelcontextprotocol/python-sdk
 aiohttp
+nodejs-bin[cmd]
+nodejs-cmd
