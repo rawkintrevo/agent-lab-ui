@@ -14,12 +14,14 @@ const {logger} = require("firebase-functions");
  * @param {functions.https.CallableContext} context The context of the function call.
  * @returns {Promise<{success: boolean, tools: Array<Object>}>} A promise that resolves with the list of tools.
  */
-exports.list_local_stdio_server_tools = functions.https.onCall(async (data, context) => {
-
-    console.log("🔥 raw data type:", typeof data);
-    console.log("🔥 raw data value:", JSON.stringify(data, null, 2));
-
-    const { packageName } = data;
+exports.list_local_stdio_server_tools = functions.https.onCall(async (request) => {
+    const data = await request.data;
+    console.log('data received:', data);
+    // console.log("🔥 raw data value:", JSON.stringify(data, null, 2));
+    console.log('stdioConfig received:', data.stdioConfig);
+    console.log('packageName received:', data.stdioConfig?.packageName);
+    const packageName = data.stdioConfig.packageName;
+    console.log('packageName is a:' , typeof packageName);
     if (!packageName || typeof packageName !== 'string') {
         throw new functions.https.HttpsError(
             "invalid-argument",
@@ -27,11 +29,12 @@ exports.list_local_stdio_server_tools = functions.https.onCall(async (data, cont
         );
     }
 
-    functions.logger.info(`Attempting to list tools for package: ${packageName}`, { uid: context.auth.uid });
+    functions.logger.info(`Attempting to list tools for package: ${packageName}`);
 
     // 2. Core Logic wrapped in a Promise to handle the async child process
     try {
         const tools = await new Promise((resolve, reject) => {
+            console.log(`Starting MCP tool listing for package: ${packageName}`);
             const command = 'npx';
             // The -y flag automatically answers "yes" to any prompts, like installing the package.
             const args = ['-y', packageName];
@@ -43,7 +46,7 @@ exports.list_local_stdio_server_tools = functions.https.onCall(async (data, cont
 
             // Spawn the process. Using shell:true can help with path resolution for `npx`.
             const child = spawn(command, args, { shell: true, detached: true });
-
+            console.log(`Spawned child process with PID: ${child.pid}`);
             const timeout = setTimeout(() => {
                 try {
                     // Kill the entire process group to ensure cleanup

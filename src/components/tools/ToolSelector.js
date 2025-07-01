@@ -285,7 +285,7 @@ const ToolSelector = ({
             return acc;
         }, {});
 
-        const config = { command: stdioCommand.trim(), args: stdioArgs.trim(), env: envObj };
+        const config = { packageName: stdioArgs.trim(), env: envObj };
 
         const newLocalServer = { config, tools: null, error: null, loading: true };
         setLoadedLocalServers(prev => [...prev, newLocalServer]);

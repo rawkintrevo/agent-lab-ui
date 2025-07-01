@@ -55,14 +55,9 @@ export const listMcpServerTools = async (serverUrl, auth) => {
 // New function to list tools from a local stdio command
 export const listLocalStdioServerTools = async (stdioConfig) => {
     try {
-        const safeConfig = JSON.parse(JSON.stringify({
-            command: stdioConfig.command,
-            args: stdioConfig.args,
-            env: stdioConfig.env
-        }));
 
-        console.log("listing local stdio server tools with config:", safeConfig);
-        const result = await listLocalStdioServerToolsCallable({ safeConfig });
+        console.log("listing local stdio server tools with config:", stdioConfig);
+        const result = await listLocalStdioServerToolsCallable({ stdioConfig });
         if (result.data && result.data.success && Array.isArray(result.data.tools)) {
             return { success: true, tools: result.data.tools };
         }
