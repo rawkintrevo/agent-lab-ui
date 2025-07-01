@@ -291,6 +291,7 @@ const ToolSelector = ({
         setLoadedLocalServers(prev => [...prev, newLocalServer]);
 
         try {
+            console.log("Loading tools from local stdio server with config:", config);
             const result = await listLocalStdioServerTools(config);
             if (result.success && Array.isArray(result.tools)) {
                 setLoadedLocalServers(prev => prev.map(s => s.config === config ? { ...s, tools: result.tools, error: null, loading: false } : s));

@@ -7,7 +7,7 @@ const queryDeployedAgentCallable = createCallable('query_deployed_agent');
 const deleteVertexAgentCallable = createCallable('delete_vertex_agent');
 const checkVertexAgentDeploymentStatusCallable = createCallable('check_vertex_agent_deployment_status');
 const listMcpServerToolsCallable = createCallable('list_mcp_server_tools');
-const listLocalStdioServerToolsCallable = createCallable('list_local_stdio_server_tools'); // New callable
+const listLocalStdioServerToolsCallable = createCallable('list_local_stdio_server_tools');
 
 
 export const fetchGofannonTools = async () => {
@@ -55,7 +55,14 @@ export const listMcpServerTools = async (serverUrl, auth) => {
 // New function to list tools from a local stdio command
 export const listLocalStdioServerTools = async (stdioConfig) => {
     try {
-        const result = await listLocalStdioServerToolsCallable({ stdioConfig });
+        const safeConfig = JSON.parse(JSON.stringify({
+            command: stdioConfig.command,
+            args: stdioConfig.args,
+            env: stdioConfig.env
+        }));
+
+        console.log("listing local stdio server tools with config:", safeConfig);
+        const result = await listLocalStdioServerToolsCallable({ safeConfig });
         if (result.data && result.data.success && Array.isArray(result.data.tools)) {
             return { success: true, tools: result.data.tools };
         }
