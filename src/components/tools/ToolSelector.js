@@ -1,9 +1,9 @@
-// src/components/tools/ToolSelector.js
+// src/components/tools/ToolSelector.js  
 import React, { useMemo, useState } from 'react';
 import {
     Typography, Button, Checkbox, FormControlLabel, FormGroup,
     Box, CircularProgress, Alert, Paper, Grid, FormHelperText, IconButton, Tooltip,
-    Accordion, AccordionSummary, AccordionDetails, TextField
+    Accordion, AccordionSummary, AccordionDetails, TextField, FormControl, InputLabel, Select, MenuItem
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -83,8 +83,8 @@ const ToolSelector = ({
     const [serverForAuthSetup, setServerForAuthSetup] = useState(null);
 
     // --- New Local Stdio MCP State ---
-    const [stdioCommand, setStdioCommand] = useState('');
-    const [stdioArgs, setStdioArgs] = useState('');
+    const [stdioCommand, setStdioCommand] = useState('npx');
+    const [stdioPackageName, setStdioPackageName] = useState('');
     const [stdioEnv, setStdioEnv] = useState('');
     const [loadedLocalServers, setLoadedLocalServers] = useState([]); // { config, tools, error, loading }
     const [loadingLocalServer, setLoadingLocalServer] = useState(false);
@@ -274,7 +274,7 @@ const ToolSelector = ({
 
     // --- New Local Stdio Handlers ---
     const handleLoadLocalServerTools = async () => {
-        if (!stdioCommand.trim()) return;
+        if (!stdioCommand.trim() || !stdioPackageName.trim()) return;
 
         setLoadingLocalServer(true);
         const envObj = stdioEnv.split('\n').reduce((acc, line) => {
@@ -285,7 +285,11 @@ const ToolSelector = ({
             return acc;
         }, {});
 
-        const config = { packageName: stdioArgs.trim(), env: envObj };
+        const config = {
+            command: stdioCommand.trim(),
+            packageName: stdioPackageName.trim(),
+            env: envObj
+        };
 
         const newLocalServer = { config, tools: null, error: null, loading: true };
         setLoadedLocalServers(prev => [...prev, newLocalServer]);
@@ -302,8 +306,8 @@ const ToolSelector = ({
             setLoadedLocalServers(prev => prev.map(s => s.config === config ? { ...s, error: error.message || "An unexpected error occurred.", loading: false } : s));
         } finally {
             setLoadingLocalServer(false);
-            setStdioCommand('');
-            setStdioArgs('');
+            setStdioCommand('npx');
+            setStdioPackageName('');
             setStdioEnv('');
         }
     };
@@ -592,27 +596,31 @@ const ToolSelector = ({
                 <AccordionDetails>
                     <Grid container spacing={2}>
                         <Grid item xs={12}>
-                            <TextField
-                                fullWidth
-                                label="Command"
-                                variant="outlined"
-                                size="small"
-                                value={stdioCommand}
-                                onChange={(e) => setStdioCommand(e.target.value)}
-                                placeholder="e.g., python3 or /path/to/executable"
-                                helperText="The command to execute in the cloud function environment."
-                            />
+                            <FormControl fullWidth variant="outlined" size="small">
+                                <InputLabel id="stdio-command-select-label">Command</InputLabel>
+                                <Select
+                                    labelId="stdio-command-select-label"
+                                    id="stdio-command-select"
+                                    value={stdioCommand}
+                                    label="Command"
+                                    onChange={(e) => setStdioCommand(e.target.value)}
+                                >
+                                    <MenuItem value="npx">npx</MenuItem>
+                                    <MenuItem value="python" disabled>python (coming soon)</MenuItem>
+                                </Select>
+                                <FormHelperText>The command to execute in the cloud function environment.</FormHelperText>
+                            </FormControl>
                         </Grid>
                         <Grid item xs={12}>
                             <TextField
                                 fullWidth
-                                label="Arguments"
+                                label="Package & Arguments"
                                 variant="outlined"
                                 size="small"
-                                value={stdioArgs}
-                                onChange={(e) => setStdioArgs(e.target.value)}
-                                placeholder="e.g., -m my_module.server --port 8000"
-                                helperText="Arguments to pass to the command, separated by spaces."
+                                value={stdioPackageName}
+                                onChange={(e) => setStdioPackageName(e.target.value)}
+                                placeholder="e.g., @pinecone-database/mcp --port 8000"
+                                helperText="The full package name and any arguments to pass to the command."
                             />
                         </Grid>
                         <Grid item xs={12}>
@@ -633,7 +641,7 @@ const ToolSelector = ({
                             <Button
                                 variant="contained"
                                 onClick={handleLoadLocalServerTools}
-                                disabled={loadingLocalServer || !stdioCommand.trim()}
+                                disabled={loadingLocalServer || !stdioPackageName.trim()}
                                 startIcon={loadingLocalServer ? <CircularProgress size={16} /> : <AddCircleOutlineIcon />}
                             >
                                 Load Tools from Stdio
@@ -643,7 +651,7 @@ const ToolSelector = ({
                     {loadedLocalServers.map((server, index) => (
                         <Paper key={`${server.config.command}-${index}`} variant="outlined" sx={{ p: 1.5, mt: 2 }}>
                             <Typography sx={{wordBreak: 'break-all', fontWeight: 'medium'}}>
-                                Local Server: {server.config.command} {server.config.args}
+                                Local Server: {server.config.command} {server.config.packageName}
                             </Typography>
                             {server.loading && <Box sx={{display: 'flex', justifyContent: 'center', my: 1}}><CircularProgress/></Box>}
                             {server.error && <Alert severity="error" sx={{fontSize: '0.8rem', mt:1}}>{server.error}</Alert>}

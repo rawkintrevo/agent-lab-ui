@@ -14,7 +14,11 @@ const {logger} = require("firebase-functions");
  * @param {functions.https.CallableContext} context The context of the function call.
  * @returns {Promise<{success: boolean, tools: Array<Object>}>} A promise that resolves with the list of tools.
  */
-exports.list_local_stdio_server_tools = functions.https.onCall(async (request) => {
+exports.list_local_stdio_server_tools = functions.https.onCall({
+    timeoutSeconds: 300,
+    memory: '1GiB',
+    },
+    async (request) => {
     const data = await request.data;
     console.log('data received:', data);
     // console.log("🔥 raw data value:", JSON.stringify(data, null, 2));
@@ -65,10 +69,12 @@ exports.list_local_stdio_server_tools = functions.https.onCall(async (request) =
             });
 
             child.stdout.on('data', (data) => {
+                logger.info("Received stdout data from child process.");
                 stdoutData += data.toString();
             });
 
             child.stderr.on('data', (data) => {
+                logger.info("Received stderr data from child process.");
                 stderrData += data.toString();
             });
 
@@ -91,10 +97,12 @@ exports.list_local_stdio_server_tools = functions.https.onCall(async (request) =
 
                 // MCP servers can output multiple JSON objects, one per line. We need to find
                 // the one that is the response to our specific request.
-                const lines = stdoutData.trim().split('\n');
+                const lines = stdoutData.trim().split('\n');''
+                logger.info(`Received stdout from '${packageName}': ${stdoutData}`);
                 let responseFound = false;
 
                 for (const line of lines) {
+                    logger.info(`Processing line from stdout: ${line}`);
                     try {
                         const response = JSON.parse(line);
                         // Look for a valid JSON-RPC response with our request ID (1)
@@ -107,6 +115,7 @@ exports.list_local_stdio_server_tools = functions.https.onCall(async (request) =
                         }
                     } catch (lineParseError) {
                         // This line wasn't valid JSON, which can happen with debug output. Ignore it.
+                        logger.info(`Failed to parse line as JSON: ${lineParseError.message}`);
                         functions.logger.warn(`Ignoring non-JSON line from stdio tool output: ${line}`);
                     }
                 }
