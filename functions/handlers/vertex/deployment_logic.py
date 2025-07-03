@@ -154,6 +154,13 @@ def _deploy_agent_to_vertex_logic(req: https_fn.CallableRequest): # Remains sync
 
     deployment_display_name = generate_vertex_deployment_display_name(original_config_name, agent_doc_id)
 
+    # 1. Define the path to the installation script.
+    installation_script_path = "installation_scripts/install_nodejs.sh"
+
+    # 2. Add the script path to the extra_packages list. This ensures the ADK
+    #    copies the script into the build environment.
+    extra_packages_list = [installation_script_path]
+
     vertex_env_vars = {}
     # Pass API keys and necessary config from function environment to Vertex deployment environment
     for provider_id, config_details in BACKEND_LITELLM_PROVIDER_CONFIG.items():
@@ -183,14 +190,19 @@ def _deploy_agent_to_vertex_logic(req: https_fn.CallableRequest): # Remains sync
 
 
     logger.info(f"Attempting to deploy ADK agent '{adk_agent.name}' to Vertex AI with display_name: '{deployment_display_name}'. Requirements: {requirements_list}. Environment Variables for Vertex: {list(vertex_env_vars.keys())}")
-
+    logger.info(f"Requirements: {requirements_list}")
+    logger.info(f"Extra Packages: {extra_packages_list}")
     try:
         remote_app = deployed_agent_engines.create(
             agent_engine=adk_agent,
             requirements=requirements_list,
             display_name=deployment_display_name,
             description=agent_config_data.get("description", f"ADK Agent: {deployment_display_name}"),
-            env_vars=vertex_env_vars if vertex_env_vars else None # Pass None if empty
+            extra_packages=extra_packages_list,
+            build_options={
+                "installation_scripts": [installation_script_path],
+            },
+            env_vars=vertex_env_vars
         )
         logger.info(f"Vertex AI agent deployment successful for '{agent_doc_id}'. Resource: {remote_app.resource_name}")
         db.collection("agents").document(agent_doc_id).update({
