@@ -1,7 +1,6 @@
 rules_version = '2';  
 service cloud.firestore {
   match /databases/{database}/documents {
-
     // --- Helper Functions ---
     function isOwner(docData) {
       // Handles both `ownerId` (projects, models) and `userId` (agents) fields.
@@ -83,6 +82,26 @@ service cloud.firestore {
       }
     }
 
+    // Public read-only access to shared chats and messages
+    match /share/{sharedChatId} {
+      allow read: if true;
+
+      allow create, update, delete: if request.auth != null &&
+        request.resource.data.originalChatId is string &&
+        exists(/databases/$(database)/documents/chats/$(request.resource.data.originalChatId)) &&
+        get(/databases/$(database)/documents/chats/$(request.resource.data.originalChatId)).data.ownerId == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow read: if true;
+
+        allow create, update, delete: if request.auth != null &&
+          // Get the parent shared chat document
+          exists(/databases/$(database)/documents/share/$(sharedChatId)) &&
+          get(/databases/$(database)/documents/share/$(sharedChatId)).data.originalChatId is string &&
+          exists(/databases/$(database)/documents/chats/$(get(/databases/$(database)/documents/share/$(sharedChatId)).data.originalChatId)) &&
+          get(/databases/$(database)/documents/chats/$(get(/databases/$(database)/documents/share/$(sharedChatId)).data.originalChatId)).data.ownerId == request.auth.uid;
+      }
+    }
     // --- Gofannon Tool Manifest ---
     match /gofannonToolManifest/{docId} {
       allow read: if request.auth != null;

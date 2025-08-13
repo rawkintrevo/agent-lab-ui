@@ -379,3 +379,53 @@ export const updateUserPermissions = async (targetUserId, permissionsData) => {
         throw error;
     }
 };
+
+export const shareChat = async (originalChatId) => {
+    const originalRef = doc(db, "chats", originalChatId);
+    const originalSnap = await getDoc(originalRef);
+    if (!originalSnap.exists()) throw new Error("Original chat not found");
+
+    // 1. Create new share doc with same ID
+    const shareRef = doc(db, "share", originalChatId);
+    await setDoc(shareRef, {
+        ...originalSnap.data(),
+        id: originalChatId,
+        originalChatId,
+        sharedAt: serverTimestamp(),
+    });
+
+    // 2. Copy messages subcollection
+    const msgsSnap = await getDocs(collection(originalRef, "messages"));
+    const batch = writeBatch(db);
+    msgsSnap.forEach(docSnap => {
+        const targetRef = doc(db, "share", originalChatId, "messages", docSnap.id);
+        batch.set(targetRef, docSnap.data());
+    });
+    await batch.commit();
+    return originalChatId;
+};
+
+/**
+ * Returns the sharedChatId if this chat was already shared.
+ */
+export const getSharedChatIdForOriginal = async (originalChatId) => {
+    const shareDoc = await getDoc(doc(db, "share", originalChatId));
+    return shareDoc.exists() ? shareDoc.id : null;
+};
+
+// Deletes the shared chat document and all its messages
+export const unshareChat = async (sharedChatId) => {
+    const shareRef = doc(db, "share", sharedChatId);
+
+    // Get all messages in the shared chat
+    const messagesSnapshot = await getDocs(collection(shareRef, "messages"));
+
+    const batch = writeBatch(db);
+    messagesSnapshot.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+    });
+
+    batch.delete(shareRef);
+
+    await batch.commit();
+};
