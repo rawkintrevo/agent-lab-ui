@@ -2,18 +2,24 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfig } from '../contexts/ConfigContext';
+import * as firebaseService from '../services/firebaseService';
 import { getChatDetails, listenToChatMessages, addChatMessage, getModelsForProjects, getAgentsForProjects, getEventsForMessage } from '../services/firebaseService';
 import { executeQuery } from '../services/agentService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorMessage from '../components/common/ErrorMessage';
 import {
     Container, Typography, Box, Paper, Button, TextField, Menu, MenuItem,
-    Avatar, ButtonGroup, ListSubheader, Divider, CircularProgress
+    Avatar, ButtonGroup, ListSubheader, Divider, CircularProgress, IconButton, Snackbar
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import PersonIcon from '@mui/icons-material/Person';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import ModelTrainingIcon from '@mui/icons-material/ModelTraining';
+import ShareIcon from '@mui/icons-material/Share';
+import CachedIcon from '@mui/icons-material/Cached';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import MessageActions from '../components/chat/MessageActions';
 import AgentReasoningLogDialog from '../components/agents/AgentReasoningLogDialog';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
@@ -138,10 +144,12 @@ const extractContextItemsFromMessage = (msg) => {
     return msg.items || msg.contextItems || msg.stuffedContextItems || [];
 };
 
-const ChatPage = () => {
+const ChatPage = ({ isReadOnly = false }) => {
     const theme = useTheme();
     const { currentUser } = useAuth();
-    const { chatId } = useParams();
+    const { config } = useConfig();
+    const { chatId, sharedChatId } = useParams();
+    const effectiveChatId = sharedChatId || chatId;
     const chatEndRef = useRef(null);
     const [chat, setChat] = useState(null);
     const [messagesMap, setMessagesMap] = useState({});
@@ -171,21 +179,46 @@ const ChatPage = () => {
     const [contextDetailsOpen, setContextDetailsOpen] = useState(false);
     const [contextDetailsItems, setContextDetailsItems] = useState([]);
 
+    // Sharing state
+    const [shareId, setShareId] = useState(null);
+    const [sharing, setSharing] = useState(false);
+    const [snackbar, setSnackbar] = useState({ open: false, message: "" });
+    const [unsharing, setUnsharing] = useState(false);
+
+    // Handler for unshare:
+    const handleUnshare = async () => {
+        if (!shareId) return;
+        if (!window.confirm("Are you sure you want to un-share this chat? This will remove the shared copy.")) return;
+        setUnsharing(true);
+        try {
+            await firebaseService.unshareChat(shareId);
+            setShareId(null);
+            setSnackbar({ open: true, message: "Chat un-shared." });
+        } catch (err) {
+            console.error(err);
+            setSnackbar({ open: true, message: `Failed to un-share chat: ${err.message}` });
+        } finally {
+            setUnsharing(false);
+        }
+    };
+
     const conversationPath = useMemo(() => {
         if (!messagesMap || !activeLeafMsgId) return [];
         return getPathToLeaf(messagesMap, activeLeafMsgId);
     }, [messagesMap, activeLeafMsgId]);
 
     useEffect(() => {
+
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [conversationPath, sending, isContextLoading]);
 
     useEffect(() => {
         setLoading(true);
+        console.log('debug: useEffect for chatId', effectiveChatId);
         let unsubscribe;
         const setupListener = async () => {
             try {
-                const chatData = await getChatDetails(chatId);
+                const chatData = await getChatDetails(effectiveChatId);
                 setChat(chatData);
                 const [projAgents, projModels] = await Promise.all([
                     getAgentsForProjects(chatData.projectIds || []),
@@ -193,7 +226,7 @@ const ChatPage = () => {
                 ]);
                 setAgents(projAgents);
                 setModels(projModels);
-                unsubscribe = listenToChatMessages(chatId, (newMsgs) => {
+                unsubscribe = listenToChatMessages(effectiveChatId, (newMsgs) => {
                     const newMessagesMap = newMsgs.reduce((acc, m) => ({ ...acc, [m.id]: m }), {});
                     setMessagesMap(newMessagesMap);
                     setActiveLeafMsgId(prevLeafId => {
@@ -208,16 +241,31 @@ const ChatPage = () => {
         };
         setupListener();
         return () => { if (unsubscribe) unsubscribe(); };
-    }, [chatId]);
+    }, [effectiveChatId]);
 
-    const handleFork = (msgId) => setActiveLeafMsgId(msgId);
-    const handleNavigateBranch = (newLeafId) => setActiveLeafMsgId(newLeafId);
+    // Sharing: On mount, if sharing is enabled and not read-only, check if chat is already shared
+    useEffect(() => {
+        if (!isReadOnly && config?.features?.enableChatSharing) {
+            firebaseService.getSharedChatIdForOriginal(effectiveChatId)
+                .then(id => setShareId(id))
+                .catch(console.error);
+        }
+    }, [effectiveChatId, isReadOnly, config]);
+
+    const handleFork = (msgId) => {
+        if (isReadOnly) return;
+        setActiveLeafMsgId(msgId);
+    };
+    const handleNavigateBranch = (newLeafId) => {
+        if (isReadOnly) return;
+        setActiveLeafMsgId(newLeafId);
+    };
 
     const handleOpenReasoningLog = async (messageId) => {
         setLoadingEvents(true);
         setIsReasoningLogOpen(true);
         try {
-            const events = await getEventsForMessage(chatId, messageId);
+            const events = await getEventsForMessage(effectiveChatId, messageId);
             setSelectedEventsForLog(events);
         } catch (err) {
             console.error("Failed to fetch events:", err);
@@ -228,10 +276,14 @@ const ChatPage = () => {
     };
     const handleCloseReasoningLog = () => setIsReasoningLogOpen(false);
 
-    const handleOpenMenu = (event) => setActionButtonAnchorEl(event.currentTarget);
+    const handleOpenMenu = (event) => {
+        if (isReadOnly) return;
+        setActionButtonAnchorEl(event.currentTarget);
+    };
     const handleCloseMenu = () => setActionButtonAnchorEl(null);
 
     const handleMenuActionSelect = (action) => {
+        if (isReadOnly) return;
         const { type, id, name } = action;
         if (type === 'text' || type === 'agent' || type === 'model') {
             setComposerAction({ type, id, name });
@@ -245,6 +297,7 @@ const ChatPage = () => {
 
     const handleActionSubmit = async (e) => {
         e.preventDefault();
+        if (isReadOnly) return;
         setSending(true);
         setError(null);
         try {
@@ -252,7 +305,7 @@ const ChatPage = () => {
                 const trimmed = composerValue.trim();
                 if (trimmed.length > 0) {
                     const finalParts = [{ text: trimmed }];
-                    await addChatMessage(chatId, {
+                    await addChatMessage(effectiveChatId, {
                         participant: `user:${currentUser.uid}`,
                         parts: finalParts,
                         parentMessageId: activeLeafMsgId
@@ -261,7 +314,7 @@ const ChatPage = () => {
                 }
             } else if (composerAction.type === 'agent' || composerAction.type === 'model') {
                 await executeQuery({
-                    chatId,
+                    chatId: effectiveChatId,
                     agentId: composerAction.type === 'agent' ? composerAction.id : undefined,
                     modelId: composerAction.type === 'model' ? composerAction.id : undefined,
                     adkUserId: currentUser.uid,
@@ -278,19 +331,20 @@ const ChatPage = () => {
     };
 
     const handleContextSubmit = async (params) => {
+        if (isReadOnly) return;
         setIsContextLoading(true);
         setError(null);
         handleCloseContextModal();
         try {
             let result;
             if (params.type === 'webpage') {
-                result = await fetchWebPageContent({ url: params.url, chatId, parentMessageId: activeLeafMsgId });
+                result = await fetchWebPageContent({ url: params.url, chatId: effectiveChatId, parentMessageId: activeLeafMsgId });
             } else if (params.type === 'gitrepo') {
-                result = await fetchGitRepoContents({ ...params, chatId, parentMessageId: activeLeafMsgId });
+                result = await fetchGitRepoContents({ ...params, chatId: effectiveChatId, parentMessageId: activeLeafMsgId });
             } else if (params.type === 'pdf') {
-                result = await processPdfContent({ ...params, chatId, parentMessageId: activeLeafMsgId });
+                result = await processPdfContent({ ...params, chatId: effectiveChatId, parentMessageId: activeLeafMsgId });
             } else if (params.type === 'image') {
-                result = await uploadImageForContext({ file: params.file, chatId, parentMessageId: activeLeafMsgId });
+                result = await uploadImageForContext({ file: params.file, chatId: effectiveChatId, parentMessageId: activeLeafMsgId });
             } else {
                 throw new Error("Unknown context type");
             }
@@ -330,7 +384,29 @@ const ChatPage = () => {
         };
     };
 
-    if (loading || !chat) return <Box sx={{ display: 'flex', justifyContent: 'center' }}><LoadingSpinner /></Box>;
+    // Share handlers and UI
+    const handleShare = async () => {
+        setSharing(true);
+        try {
+            const newShareId = await firebaseService.shareChat(effectiveChatId);
+            setShareId(newShareId);
+            setSnackbar({ open: true, message: "Chat shared!" });
+        } catch (err) {
+            console.error(err);
+            setSnackbar({ open: true, message: `Share failed: ${err.message}` });
+        } finally {
+            setSharing(false);
+        }
+    };
+
+    const handleCopyLink = () => {
+        if (!shareId) return;
+        const url = `${window.location.origin}/share/${shareId}`;
+        navigator.clipboard.writeText(url);
+        setSnackbar({ open: true, message: "Link copied to clipboard!" });
+    };
+
+    if (loading || !chat) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><LoadingSpinner /></Box>;
     if (error && !conversationPath.length) return <ErrorMessage message={error} />;
 
     const sendButtonDisabled = sending || isContextLoading || (composerAction.type === 'text' && !composerValue.trim());
@@ -338,7 +414,51 @@ const ChatPage = () => {
     return (
         <Container sx={{ py: 3 }}>
             <Paper sx={{ p: { xs: 2, md: 4 } }}>
-                <Typography variant="h4" gutterBottom>{chat.title}</Typography>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <Typography variant="h4" gutterBottom sx={{ flexGrow: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {chat.title}
+                    </Typography>
+                    {config?.features?.enableChatSharing && !isReadOnly && (
+                        <Box>
+                            {!shareId ? (
+                                <IconButton
+                                    onClick={handleShare}
+                                    disabled={sharing}
+                                    aria-label="share chat"
+                                    title="Share chat"
+                                >
+                                    {sharing ? <CircularProgress size={20} /> : <ShareIcon />}
+                                </IconButton>
+                            ) : (
+                                <>
+                                    <IconButton
+                                        disabled={unsharing}
+                                        aria-label="chat is shared"
+                                        title="Chat is shared"
+                                    >
+                                        <CachedIcon />
+                                    </IconButton>
+                                    <IconButton
+                                        onClick={handleCopyLink}
+                                        aria-label="copy share link"
+                                        title="Copy share link"
+                                    >
+                                        <ContentCopyIcon />
+                                    </IconButton>
+                                    <IconButton
+                                        onClick={handleUnshare}
+                                        disabled={unsharing}
+                                        aria-label="unshare chat"
+                                        title="Un-share chat"
+                                    >
+                                        {unsharing ? <CircularProgress size={20} /> : <DeleteOutlineIcon />}
+                                    </IconButton>
+                                </>
+                            )}
+                        </Box>
+                    )}
+                </Box>
+
                 {error && <ErrorMessage message={error} />}
 
                 <Box
@@ -450,6 +570,7 @@ const ChatPage = () => {
                                     onNavigate={handleNavigateBranch} onFork={handleFork} onViewLog={handleOpenReasoningLog}
                                     getChildrenForMessage={getChildrenForMessage} findLeafOfBranch={findLeafOfBranch}
                                     isAssistantMessage={isAssistant}
+                                    isReadOnly={isReadOnly}
                                 />
                             </Box>
                         );
@@ -457,35 +578,37 @@ const ChatPage = () => {
                     <div ref={chatEndRef} />
                 </Box>
 
-                <Box component="form" onSubmit={handleActionSubmit} sx={{ display: 'flex', alignItems: 'flex-end', mt: 2, gap: 1 }}>
-                    {composerAction.type === 'text' && (
-                        <TextField
-                            value={composerValue} onChange={e => setComposerValue(e.target.value)} variant="outlined" size="small"
-                            placeholder="Type your message..." sx={{ flexGrow: 1 }} disabled={sending || isContextLoading}
-                            multiline maxRows={4}
-                        />
-                    )}
-                    <ButtonGroup variant="contained" sx={{ flexShrink: 0, height: composerAction.type === 'text' ? 'auto' : 'fit-content', alignSelf: composerAction.type === 'text' ? 'auto' : 'center', ml: composerAction.type !== 'text' ? 'auto' : 0, mr: composerAction.type !== 'text' ? 'auto' : 0 }}>
-                        <Button type="submit" disabled={sendButtonDisabled}>
-                            {sending ? <CircularProgress size={24} color="inherit" /> : (composerAction.type === 'text' ? 'Send' : `Reply as '${composerAction.name}'`)}
-                        </Button>
-                        <Button size="small" onClick={handleOpenMenu} disabled={sending || isContextLoading}><ArrowDropDownIcon /></Button>
-                    </ButtonGroup>
-                    <Menu anchorEl={actionButtonAnchorEl} open={isMenuOpen} onClose={handleCloseMenu}>
-                        <MenuItem onClick={() => handleMenuActionSelect({ type: 'text' })}>Text Message</MenuItem>
-                        <Divider />
-                        {models.length > 0 && <ListSubheader>Models</ListSubheader>}
-                        {models.map(model => (<MenuItem key={model.id} onClick={() => handleMenuActionSelect({ type: 'model', id: model.id, name: model.name })}><ModelTrainingIcon sx={{ mr: 1 }} fontSize="small" /> {model.name}</MenuItem>))}
-                        {agents.length > 0 && <ListSubheader>Agents</ListSubheader>}
-                        {agents.map(agent => (<MenuItem key={agent.id} onClick={() => handleMenuActionSelect({ type: 'agent', id: agent.id, name: agent.name })}><SmartToyIcon sx={{ mr: 1 }} fontSize="small" /> {agent.name}</MenuItem>))}
-                        <Divider />
-                        <ListSubheader>Add Context</ListSubheader>
-                        <MenuItem onClick={() => handleMenuActionSelect({ type: 'context-webpage' })}>Web Page</MenuItem>
-                        <MenuItem onClick={() => handleMenuActionSelect({ type: 'context-gitrepo' })}>Git Repository</MenuItem>
-                        <MenuItem onClick={() => handleMenuActionSelect({ type: 'context-pdf' })}>PDF Document</MenuItem>
-                        <MenuItem onClick={() => handleMenuActionSelect({ type: 'context-image' })}>Image</MenuItem>
-                    </Menu>
-                </Box>
+                {!isReadOnly && (
+                    <Box component="form" onSubmit={handleActionSubmit} sx={{ display: 'flex', alignItems: 'flex-end', mt: 2, gap: 1 }}>
+                        {composerAction.type === 'text' && (
+                            <TextField
+                                value={composerValue} onChange={e => setComposerValue(e.target.value)} variant="outlined" size="small"
+                                placeholder="Type your message..." sx={{ flexGrow: 1 }} disabled={sending || isContextLoading}
+                                multiline maxRows={4}
+                            />
+                        )}
+                        <ButtonGroup variant="contained" sx={{ flexShrink: 0, height: composerAction.type === 'text' ? 'auto' : 'fit-content', alignSelf: composerAction.type === 'text' ? 'auto' : 'center', ml: composerAction.type !== 'text' ? 'auto' : 0, mr: composerAction.type !== 'text' ? 'auto' : 0 }}>
+                            <Button type="submit" disabled={sendButtonDisabled}>
+                                {sending ? <CircularProgress size={24} color="inherit" /> : (composerAction.type === 'text' ? 'Send' : `Reply as '${composerAction.name}'`)}
+                            </Button>
+                            <Button size="small" onClick={handleOpenMenu} disabled={sending || isContextLoading}><ArrowDropDownIcon /></Button>
+                        </ButtonGroup>
+                        <Menu anchorEl={actionButtonAnchorEl} open={isMenuOpen} onClose={handleCloseMenu}>
+                            <MenuItem onClick={() => handleMenuActionSelect({ type: 'text' })}>Text Message</MenuItem>
+                            <Divider />
+                            {models.length > 0 && <ListSubheader>Models</ListSubheader>}
+                            {models.map(model => (<MenuItem key={model.id} onClick={() => handleMenuActionSelect({ type: 'model', id: model.id, name: model.name })}><ModelTrainingIcon sx={{ mr: 1 }} fontSize="small" /> {model.name}</MenuItem>))}
+                            {agents.length > 0 && <ListSubheader>Agents</ListSubheader>}
+                            {agents.map(agent => (<MenuItem key={agent.id} onClick={() => handleMenuActionSelect({ type: 'agent', id: agent.id, name: agent.name })}><SmartToyIcon sx={{ mr: 1 }} fontSize="small" /> {agent.name}</MenuItem>))}
+                            <Divider />
+                            <ListSubheader>Add Context</ListSubheader>
+                            <MenuItem onClick={() => handleMenuActionSelect({ type: 'context-webpage' })}>Web Page</MenuItem>
+                            <MenuItem onClick={() => handleMenuActionSelect({ type: 'context-gitrepo' })}>Git Repository</MenuItem>
+                            <MenuItem onClick={() => handleMenuActionSelect({ type: 'context-pdf' })}>PDF Document</MenuItem>
+                            <MenuItem onClick={() => handleMenuActionSelect({ type: 'context-image' })}>Image</MenuItem>
+                        </Menu>
+                    </Box>
+                )}
                 {isContextLoading && <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', my: 1.5 }}> <CircularProgress size={20} sx={{ mr: 1 }} /> <Typography variant="body2" color="text.secondary">Processing context...</Typography> </Box>}
             </Paper>
 
@@ -497,6 +620,13 @@ const ChatPage = () => {
             {isContextModalOpen && contextModalType === 'gitrepo' && (<GitRepoContextModal open={isContextModalOpen} onClose={handleCloseContextModal} onSubmit={handleContextSubmit} />)}
             {isContextModalOpen && contextModalType === 'pdf' && (<PdfContextModal open={isContextModalOpen} onClose={handleCloseContextModal} onSubmit={handleContextSubmit} />)}
             {isContextModalOpen && contextModalType === 'image' && (<ImageContextModal open={isContextModalOpen} onClose={handleCloseContextModal} onSubmit={handleContextSubmit} />)}
+
+            <Snackbar
+                open={snackbar.open}
+                autoHideDuration={3000}
+                onClose={() => setSnackbar(s => ({ ...s, open: false }))}
+                message={snackbar.message}
+            />
         </Container>
     );
 }
