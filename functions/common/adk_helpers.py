@@ -407,6 +407,40 @@ def sanitize_adk_agent_name(name_str: str, prefix_if_needed: str = "agent_") -> 
 
     return sanitized
 
+def convert_to_stopping_condition_callable(condition_config):
+    """
+    Convert a stopping condition config to a callable for LoopAgent.
+    This is a simplified example that supports only a few predefined conditions.
+
+    condition_config: can be a dict or string.
+    """
+    # Example: If condition_config is a dict with type and parameters
+    if isinstance(condition_config, dict):
+        cond_type = condition_config.get("type")
+        # Example: simple condition type "max_score_reached"
+        if cond_type == "max_score_reached":
+            threshold = condition_config.get("threshold", 0.9)
+            def stopping_cond(context):
+                # context is agent's context or shared state
+                # This should return True to stop the loop
+                score = context.get("score", 0)
+                return score >= threshold
+            return stopping_cond
+        # Add other condition types as needed
+        else:
+            # Unknown condition type
+            return None
+    elif isinstance(condition_config, str):
+        # For string conditions, define simple parsing or mapping
+        if condition_config == "always_false":
+            return lambda context: False
+        elif condition_config == "always_true":
+            return lambda context: True
+        else:
+            return None
+    return None
+
+
 async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_context="root", child_index=0): # Made async
     original_agent_name = agent_config.get('name', f'agent_cfg_{child_index}')
     # Make ADK agent names more unique to avoid conflicts if multiple deployments happen
@@ -434,7 +468,7 @@ async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_co
         if not model_id:
             raise ValueError(f"Agent '{original_agent_name}' is of type {agent_type_str} but is missing required 'modelId'.")
 
-            # Fetch the model configuration from Firestore
+        # Fetch the model configuration from Firestore
         model_config = await get_model_config_from_firestore(model_id)
 
         # Merge agent-specific properties (like tools, outputKey) with the model's properties.
@@ -478,25 +512,23 @@ async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_co
                 logger.error(f"Traceback:\n{detailed_traceback}")
                 raise ValueError(f"Failed to instantiate looped child agent for '{original_agent_name}': {e_loop_child_init}.")
 
-            max_loops_val_str = agent_config.get("maxLoops", "3") # Default to 3 loops
+            max_iterations_str = agent_config.get("maxLoops", "3")  # Using maxLoops as config key, rename to max_iterations internally
             try:
-                max_loops_val = int(max_loops_val_str)
-                if max_loops_val <= 0: # Max loops must be positive
-                    logger.warning(f"MaxLoops for LoopAgent '{adk_agent_name}' is {max_loops_val}, which is not positive. Defaulting to 3.")
-                    max_loops_val = 3
+                max_iterations = int(max_iterations_str)
+                if max_iterations <= 0:  # Must be positive
+                    logger.warning(f"maxLoops for LoopAgent '{adk_agent_name}' is {max_iterations}, which is not positive. Defaulting to 3.")
+                    max_iterations = 3
             except ValueError:
-                logger.warning(f"Invalid MaxLoops value '{max_loops_val_str}' for LoopAgent '{adk_agent_name}'. Defaulting to 3.")
-                max_loops_val = 3
-
+                logger.warning(f"Invalid maxLoops value '{max_iterations_str}' for LoopAgent '{adk_agent_name}'. Defaulting to 3.")
+                max_iterations = 3
 
             loop_agent_kwargs = {
                 "name": adk_agent_name,
                 "description": agent_config.get("description"),
-                "agent": looped_child_agent_instance, # The LlmAgent to loop
-                "max_loops": max_loops_val
-                # Potentially other LoopAgent specific params like "stopping_condition" if supported/configured
+                "sub_agents": [looped_child_agent_instance],  # Pass as list
+                "max_iterations": max_iterations,              # Correct parameter name
             }
-            logger.debug(f"Final kwargs for LoopAgent '{adk_agent_name}': {{name, description, max_loops, agent_name: {looped_child_agent_instance.name}}}")
+            logger.debug(f"Final kwargs for LoopAgent '{adk_agent_name}': {{name, description, max_iterations, sub_agents count: {len(loop_agent_kwargs['sub_agents'])}}}")
             return LoopAgent(**loop_agent_kwargs)
 
     elif AgentClass == SequentialAgent or AgentClass == ParallelAgent:

@@ -71,6 +71,9 @@ const ChildAgentFormDialog = ({
     const currentProviderConfig = getLiteLLMProviderConfig(selectedProviderId);
     const availableBaseModels = currentProviderConfig?.models || [];
     const initialDataProcessedRef = useRef(false);
+    
+    const [maxLoops, setMaxLoops] = useState(childAgentData?.maxLoops || 3);
+    const [stoppingCondition, setStoppingCondition] = useState(childAgentData?.stoppingCondition ? (typeof childAgentData.stoppingCondition === 'string' ? childAgentData.stoppingCondition : JSON.stringify(childAgentData.stoppingCondition, null, 2)) : '');
 
 
     useEffect(() => {
@@ -81,7 +84,7 @@ const ChildAgentFormDialog = ({
             setName(dataToLoad.name || '');
             setDescription(dataToLoad.description || '');
             setCurrentChildAgentType(dataToLoad.agentType || AGENT_TYPES[0]);
-
+            
             let initialSelectedProvider = dataToLoad.selectedProviderId || DEFAULT_LITELLM_PROVIDER_ID;
             let initialBaseModelName = dataToLoad.litellm_model_string || DEFAULT_LITELLM_BASE_MODEL_ID;
 
@@ -137,6 +140,13 @@ const ChildAgentFormDialog = ({
             setFormError('');
             setNameError('');
             initialDataProcessedRef.current = true;
+
+            setMaxLoops(childAgentData?.maxLoops || 3);
+            if (childAgentData?.stoppingCondition) {
+                setStoppingCondition(typeof childAgentData.stoppingCondition === 'string' ? childAgentData.stoppingCondition : JSON.stringify(childAgentData.stoppingCondition, null, 2));
+            } else {
+                setStoppingCondition('');
+            }
         }
     }, [childAgentData, open]);
 
@@ -240,7 +250,6 @@ const ChildAgentFormDialog = ({
             agentType: currentChildAgentType,
             instruction: showLlmFields ? instruction : null,
             tools: showLlmFields ? selectedTools : [], // enableCodeExecution removed
-            // enableCodeExecution removed
             usedCustomRepoUrls: showLlmFields ? usedCustomRepoUrls : [],
             usedMcpServerUrls: showLlmFields ? usedMcpServerUrls : [], // Add MCP URLs
 
@@ -262,7 +271,15 @@ const ChildAgentFormDialog = ({
         }
 
         if (currentChildAgentType === 'LoopAgent' && showLlmFields) {
-            childDataToSave.maxLoops = childAgentData?.maxLoops || 3;
+            childDataToSave.maxLoops = Number(maxLoops);
+
+            if (stoppingCondition && stoppingCondition.trim()) {
+                try {
+                    childDataToSave.stoppingCondition = JSON.parse(stoppingCondition);
+                } catch {
+                    childDataToSave.stoppingCondition = stoppingCondition.trim();
+                }
+            }
         }
 
         const adkReadyTools = (childDataToSave.tools || []).map(tool => {
@@ -414,6 +431,34 @@ const ChildAgentFormDialog = ({
                                     />
                                 </Grid>
                             )}
+                            {showLlmFields && currentChildAgentType === 'LoopAgent' && (
+                                <>
+                                    <Grid item xs={12} sm={6}>
+                                        <TextField
+                                            label="Max Iterations baz"
+                                            type="number"
+                                            value={maxLoops}
+                                            onChange={(e) => setMaxLoops(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                            InputProps={{ inputProps: { min: 1 } }}
+                                            fullWidth
+                                            variant="outlined"
+                                            helperText="Maximum number of iterations for loop agent."
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12}>
+                                        <TextField
+                                            label="Stopping Condition (JSON or simple string)"
+                                            value={stoppingCondition}
+                                            onChange={(e) => setStoppingCondition(e.target.value)}
+                                            multiline
+                                            rows={3}
+                                            fullWidth
+                                            variant="outlined"
+                                            helperText="Optional stopping condition to terminate loop early."
+                                        />
+                                    </Grid>
+                                </>
+                            )}
                             <Grid item xs={12}>
                                 <TextField
                                     label="Output Key (Optional)" value={outputKey}
@@ -447,6 +492,7 @@ const ChildAgentFormDialog = ({
                             </Grid>
                         </>
                     )}
+                    
                     {formError && !nameError && <Grid item xs={12}><FormHelperText error>{formError}</FormHelperText></Grid>}
                 </Grid>
             </DialogContent>

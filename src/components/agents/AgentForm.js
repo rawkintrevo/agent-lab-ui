@@ -61,6 +61,17 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
     const [toolError, setToolError] = useState('');
     const [formError, setFormError] = useState('');
     const [nameError, setNameError] = useState('');
+    
+    const [stoppingCondition, setStoppingCondition] = useState(initialData.stoppingCondition ? (typeof initialData.stoppingCondition === 'string' ? initialData.stoppingCondition : JSON.stringify(initialData.stoppingCondition, null, 2)) : '');
+
+    useEffect(() => {
+        setMaxLoops(initialData.maxLoops || 3);
+        if (initialData.stoppingCondition) {
+            setStoppingCondition(typeof initialData.stoppingCondition === 'string' ? initialData.stoppingCondition : JSON.stringify(initialData.stoppingCondition, null, 2));
+        } else {
+            setStoppingCondition('');
+        }
+    }, [initialData.stoppingCondition, initialData.maxLoops]);
 
     useEffect(() => {
         setChildAgents((initialData.childAgents || []).map(ca => ({ ...ca, id: ca.id || uuidv4() })));
@@ -138,6 +149,13 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
 
         if (agentType === 'LoopAgent') {
             agentDataToSubmit.maxLoops = Number(maxLoops);
+            if (stoppingCondition && stoppingCondition.trim()) {
+                try {
+                    agentDataToSubmit.stoppingCondition = JSON.parse(stoppingCondition);
+                } catch {
+                    agentDataToSubmit.stoppingCondition = stoppingCondition.trim();
+                }
+            }
         }
         if (agentType === 'SequentialAgent' || agentType === 'ParallelAgent') {
             agentDataToSubmit.childAgents = childAgents.map(ca => {
@@ -231,6 +249,34 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                                     helperText="If set, the agent's final text response is saved to this key in the session state."
                                 />
                             </Grid>
+                            {agentType === 'LoopAgent' && (
+                                <>
+                                    <Grid item xs={12} sm={6}>
+                                        <TextField
+                                            label="Max Iterations"
+                                            type="number"
+                                            value={maxLoops}
+                                            onChange={(e) => setMaxLoops(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                            InputProps={{ inputProps: { min: 1 } }}
+                                            fullWidth
+                                            variant="outlined"
+                                            helperText="Maximum number of iterations for loop agent."
+                                        />
+                                    </Grid>
+                                    <Grid item xs={12}>
+                                        <TextField
+                                            label="Stopping Condition (JSON or simple string)"
+                                            value={stoppingCondition}
+                                            onChange={(e) => setStoppingCondition(e.target.value)}
+                                            multiline
+                                            rows={3}
+                                            fullWidth
+                                            variant="outlined"
+                                            helperText="Optional stopping condition to terminate loop early."
+                                        />
+                                    </Grid>
+                                </>
+                            )}
                             <Grid item xs={12}>
                                 <Typography variant="subtitle1" sx={{mb:1}}>
                                     Tools
@@ -247,19 +293,6 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                                 />
                             </Grid>
                         </>
-                    )}
-
-                    {agentType === 'LoopAgent' && (
-                        <Grid item xs={12} sm={6}>
-                            <TextField
-                                label="Max Loops" type="number"
-                                value={maxLoops}
-                                onChange={(e) => setMaxLoops(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                                InputProps={{ inputProps: { min: 1 } }}
-                                fullWidth variant="outlined"
-                                helperText="Number of times the agent will run in a loop."
-                            />
-                        </Grid>
                     )}
 
                     {showChildConfig && (
