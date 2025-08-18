@@ -32,12 +32,197 @@ const ModelForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
     const currentProviderConfig = getLiteLLMProviderConfig(provider);
     const availableBaseModels = currentProviderConfig?.models || [];
 
-    // Get parameter definitions for selected model
     const parameterDefs = React.useMemo(() => {
         if (!currentProviderConfig) return null;
         const modelDef = currentProviderConfig.models.find(m => m.id === modelString);
         return modelDef?.parameters || null;
     }, [currentProviderConfig, modelString]);
+
+    // Recursive function to initialize parameters and enabled flags from parameterDefs and initial values
+    const initializeParamsRecursively = (paramDefs, initialVals, enabledFlags) => {
+        const params = {};
+        const enabled = {};
+        if (!paramDefs) return { params, enabled };
+        for (const [key, def] of Object.entries(paramDefs)) {
+            if (def.type === 'object' && def.parameters) {
+                const nestedInit = initializeParamsRecursively(def.parameters, initialVals?.[key] || {}, enabledFlags?.[key] || {});
+                params[key] = nestedInit.params;
+                enabled[key] = nestedInit.enabled;
+            } else {
+                const initialValue = initialVals?.[key];
+                params[key] = initialValue !== undefined ? initialValue : def.defaultValue;
+                enabled[key] = !def.optional || (initialValue !== undefined);
+            }
+        }
+        return { params, enabled };
+    };
+
+    // Recursive function to render parameters UI
+    const renderParametersRecursively = (paramDefs, paramsState, enabledState, path = []) => {
+        if (!paramDefs) return null;
+        return Object.entries(paramDefs).map(([key, def]) => {
+            const fullPath = [...path, key];
+            const paramKey = fullPath.join('.');
+
+            const isEnabled = enabledState?.[key] ?? true;
+            const paramValue = paramsState?.[key];
+
+            const toggleParam = () => {
+                setEnabledParams(prev => {
+                    const newEnabled = { ...prev };
+                    // Helper to set nested enabled flags
+                    const setNestedEnabled = (obj, keys, value) => {
+                        if (keys.length === 1) {
+                            obj[keys[0]] = value;
+                        } else {
+                            if (!obj[keys[0]]) obj[keys[0]] = {};
+                            setNestedEnabled(obj[keys[0]], keys.slice(1), value);
+                        }
+                    };
+                    // Helper to get nested def
+                    const getNestedDef = (defs, keys) => {
+                        if (keys.length === 0) return null;
+                        const [first, ...rest] = keys;
+                        if (!defs[first]) return null;
+                        if (rest.length === 0) return defs[first];
+                        if (defs[first].type === 'object' && defs[first].parameters) {
+                            return getNestedDef(defs[first].parameters, rest);
+                        }
+                        return null;
+                    };
+
+                    // Toggle current param
+                    const currentValue = isEnabled;
+                    const newValue = !currentValue;
+                    setNestedEnabled(newEnabled, fullPath, newValue);
+
+                    // If enabling, disable mutually exclusive params at this level
+                    if (newValue) {
+                        const currentDef = getNestedDef(parameterDefs, fullPath);
+                        if (currentDef?.mutually_exclusive) {
+                            currentDef.mutually_exclusive.forEach(exKey => {
+                                const exPath = [...path.slice(0, -1), exKey]; // mutual exclusives are at same level
+                                setNestedEnabled(newEnabled, exPath, false);
+                            });
+                        }
+                    }
+                    return newEnabled;
+                });
+            };
+
+            // Render UI for nested object
+            if (def.type === 'object' && def.parameters) {
+                return (
+                    <Grid item xs={12} key={paramKey} sx={{ border: '1px solid #ccc', borderRadius: 1, p: 2, mb: 2 }}>
+                        <Typography variant="subtitle1" sx={{ mb: 1 }}>{def.name}</Typography>
+                        {def.description && <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>{def.description}</Typography>}
+                        {renderParametersRecursively(def.parameters, paramValue, enabledState?.[key], fullPath)}
+                    </Grid>
+                );
+            }
+
+            // Render UI for leaf parameter
+            return (
+                <Grid item xs={12} sm={def.type === 'choice' || def.type === 'boolean' ? 6 : 12} key={paramKey}>
+                    <Box sx={{ mb: 1 }}>
+                        {def.optional && (
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={isEnabled || false}
+                                        onChange={toggleParam}
+                                    />
+                                }
+                                label={`Enable ${def.name}`}
+                            />
+                        )}
+                    </Box>
+                    {(!def.optional || isEnabled) && (
+                        <>
+                            {(def.type === 'integer' || def.type === 'float') ? (
+                                <>
+                                    <Typography gutterBottom>{def.name}</Typography>
+                                    <Slider
+                                        value={paramValue !== undefined ? paramValue : def.defaultValue}
+                                        min={def.minValue}
+                                        max={def.maxValue}
+                                        step={def.type === 'integer' ? 1 : (def.maxValue - def.minValue) / 100}
+                                        onChange={(_, v) => handleParamChange(fullPath, v)}
+                                        valueLabelDisplay="auto"
+                                    />
+                                    <Typography variant="caption" color="text.secondary">{def.description}</Typography>
+                                </>
+                            ) : def.type === 'choice' || def.type === 'boolean' ? (
+                                <FormControl fullWidth>
+                                    <InputLabel>{def.name}</InputLabel>
+                                    <Select
+                                        value={paramValue !== undefined ? paramValue : def.defaultValue}
+                                        label={def.name}
+                                        onChange={(e) => handleParamChange(fullPath, e.target.value)}
+                                    >
+                                        {def.choices.map(choice => (
+                                            <MenuItem key={choice} value={choice}>{choice}</MenuItem>
+                                        ))}
+                                    </Select>
+                                    <Typography variant="caption" color="text.secondary">{def.description}</Typography>
+                                </FormControl>
+                            ) : def.type === 'string' ? (
+                                <TextField
+                                    fullWidth
+                                    label={def.name}
+                                    value={paramValue !== undefined ? paramValue : def.defaultValue || ''}
+                                    onChange={(e) => handleParamChange(fullPath, e.target.value)}
+                                    helperText={def.description}
+                                />
+                            ) : (
+                                <Typography color="error">Unsupported parameter type: {def.type}</Typography>
+                            )}
+                        </>
+                    )}
+                </Grid>
+            );
+        });
+    };
+
+    // Recursive helper to update nested parameters state on change
+    const handleParamChange = (path, value) => {
+        setParameters(prev => {
+            const newParams = { ...prev };
+
+            const setNestedValue = (obj, keys, val) => {
+                if (keys.length === 1) {
+                    obj[keys[0]] = val;
+                } else {
+                    if (!obj[keys[0]] || typeof obj[keys[0]] !== 'object') obj[keys[0]] = {};
+                    setNestedValue(obj[keys[0]], keys.slice(1), val);
+                }
+            };
+
+            setNestedValue(newParams, path, value);
+            return newParams;
+        });
+    };
+
+    // Recursive helper to collect only enabled parameters from state for submission
+    const collectEnabledParamsRecursively = (paramDefs, paramsState, enabledState) => {
+        const collected = {};
+        if (!paramDefs) return collected;
+        for (const [key, def] of Object.entries(paramDefs)) {
+            if (def.type === 'object' && def.parameters) {
+                if (enabledState?.[key]) {
+                    const nested = collectEnabledParamsRecursively(def.parameters, paramsState?.[key] || {}, enabledState?.[key] || {});
+                    if (Object.keys(nested).length > 0) {
+                        collected[key] = nested;
+                    }
+                }
+            } else {
+                if (enabledState?.[key]) {
+                    collected[key] = paramsState?.[key];
+                }
+            }
+        }
+        return collected;
+    };
 
     // On provider or modelString or initialData.parameters change, initialize parameters and enabledParams
     useEffect(() => {
@@ -55,17 +240,11 @@ const ModelForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
             setSystemInstruction(initialData.systemInstruction);
         }
 
-        const newParameters = {};
-        const newEnabledParams = {};
-        Object.entries(parameterDefs).forEach(([key, def]) => {
-            // Load from initialData.parameters if exists, else defaultValue
-            const initialValue = initialData.parameters?.[key];
-            newParameters[key] = initialValue !== undefined ? initialValue : def.defaultValue;
-            // Enable param if not optional or if initialData has a value
-            newEnabledParams[key] = !def.optional || (initialValue !== undefined);
-        });
+        const { params: newParameters, enabled: newEnabledParams } = initializeParamsRecursively(parameterDefs, initialData.parameters || {}, {});
+
         setParameters(newParameters);
         setEnabledParams(newEnabledParams);
+        // eslint-disable-next-line
     }, [parameterDefs, initialData.parameters, currentProviderConfig, modelString, initialData.systemInstruction]);
 
     useEffect(() => {
@@ -87,48 +266,55 @@ const ModelForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
             return;
         }
 
-        // Validate parameters
-        if (parameterDefs) {
-            for (const [key, def] of Object.entries(parameterDefs)) {
-                if (enabledParams[key]) {
-                    const val = parameters[key];
-                    if (def.type === 'integer' || def.type === 'float') {
-                        if (val === undefined || val === null || isNaN(val)) {
-                            setFormError(`Parameter "${def.name}" must be a number.`);
-                            return;
+        // Validate parameters recursively
+        const validateParamsRecursively = (paramDefs, paramsState, enabledState) => {
+            if (!paramDefs) return true;
+            for (const [key, def] of Object.entries(paramDefs)) {
+                if (def.type === 'object' && def.parameters) {
+                    if (enabledState?.[key]) {
+                        if (!validateParamsRecursively(def.parameters, paramsState?.[key] || {}, enabledState?.[key] || {})) {
+                            return false;
                         }
-                        if (def.minValue !== undefined && val < def.minValue) {
-                            setFormError(`Parameter "${def.name}" must be at least ${def.minValue}.`);
-                            return;
-                        }
-                        if (def.maxValue !== undefined && val > def.maxValue) {
-                            setFormError(`Parameter "${def.name}" must be at most ${def.maxValue}.`);
-                            return;
-                        }
-                    } else if (def.type === 'choice' || def.type === 'boolean') {
-                        if (!def.choices.includes(val)) {
-                            setFormError(`Parameter "${def.name}" must be one of: ${def.choices.join(', ')}.`);
-                            return;
-                        }
-                    } else if (def.type === 'string') {
-                        if (typeof val !== 'string') {
-                            setFormError(`Parameter "${def.name}" must be a string.`);
-                            return;
+                    }
+                } else {
+                    if (enabledState?.[key]) {
+                        const val = paramsState[key];
+                        if (def.type === 'integer' || def.type === 'float') {
+                            if (val === undefined || val === null || isNaN(val)) {
+                                setFormError(`Parameter "${def.name}" must be a number.`);
+                                return false;
+                            }
+                            if (def.minValue !== undefined && val < def.minValue) {
+                                setFormError(`Parameter "${def.name}" must be at least ${def.minValue}.`);
+                                return false;
+                            }
+                            if (def.maxValue !== undefined && val > def.maxValue) {
+                                setFormError(`Parameter "${def.name}" must be at most ${def.maxValue}.`);
+                                return false;
+                            }
+                        } else if (def.type === 'choice' || def.type === 'boolean') {
+                            if (!def.choices.includes(val)) {
+                                setFormError(`Parameter "${def.name}" must be one of: ${def.choices.join(', ')}.`);
+                                return false;
+                            }
+                        } else if (def.type === 'string') {
+                            if (typeof val !== 'string') {
+                                setFormError(`Parameter "${def.name}" must be a string.`);
+                                return false;
+                            }
                         }
                     }
                 }
             }
+            return true;
+        };
+
+        if (parameterDefs && !validateParamsRecursively(parameterDefs, parameters, enabledParams)) {
+            return;
         }
 
-        // Collect enabled parameters only
-        const parametersToSave = {};
-        if (parameterDefs) {
-            for (const key of Object.keys(parameterDefs)) {
-                if (enabledParams[key]) {
-                    parametersToSave[key] = parameters[key];
-                }
-            }
-        }
+        // Collect enabled parameters only recursively
+        const parametersToSave = collectEnabledParamsRecursively(parameterDefs, parameters, enabledParams);
 
         const modelData = {
             name,
@@ -142,28 +328,6 @@ const ModelForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
         };
 
         onSubmit(modelData);
-    };
-
-    const toggleEnabled = (key) => {
-        setEnabledParams((prev) => {
-            const newEnabled = { ...prev };
-            const currentlyEnabled = !!newEnabled[key];
-            if (!currentlyEnabled) {
-                // Enabling this param, disable mutually exclusive ones
-                const def = parameterDefs?.[key];
-                if (def?.mutually_exclusive) {
-                    def.mutually_exclusive.forEach((exKey) => {
-                        newEnabled[exKey] = false;
-                    });
-                }
-            }
-            newEnabled[key] = !currentlyEnabled;
-            return newEnabled;
-        });
-    };
-
-    const handleParamChange = (key, value) => {
-        setParameters((prev) => ({ ...prev, [key]: value }));
     };
 
     return (
@@ -248,65 +412,7 @@ const ModelForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                     </Grid>
 
                     {/* Dynamic Parameters Section */}
-                    {parameterDefs && Object.entries(parameterDefs).map(([key, def]) => (
-                        <Grid item xs={12} sm={def.type === 'choice' || def.type === 'boolean' ? 6 : 12} key={key}>
-                            <Box sx={{ mb: 1 }}>
-                                {def.optional && (
-                                    <FormControlLabel
-                                        control={
-                                            <Checkbox
-                                                checked={enabledParams[key] || false}
-                                                onChange={() => toggleEnabled(key)}
-                                            />
-                                        }
-                                        label={`Enable ${def.name}`}
-                                    />
-                                )}
-                            </Box>
-                            {(!def.optional || enabledParams[key]) && (
-                                <>
-                                    {(def.type === 'integer' || def.type === 'float') ? (
-                                        <>
-                                            <Typography gutterBottom>{def.name}</Typography>
-                                            <Slider
-                                                value={parameters[key] !== undefined ? parameters[key] : def.defaultValue}
-                                                min={def.minValue}
-                                                max={def.maxValue}
-                                                step={def.type === 'integer' ? 1 : (def.maxValue - def.minValue) / 100}
-                                                onChange={(_, v) => handleParamChange(key, v)}
-                                                valueLabelDisplay="auto"
-                                            />
-                                            <Typography variant="caption" color="text.secondary">{def.description}</Typography>
-                                        </>
-                                    ) : def.type === 'choice' || def.type === 'boolean' ? (
-                                        <FormControl fullWidth>
-                                            <InputLabel>{def.name}</InputLabel>
-                                            <Select
-                                                value={parameters[key] !== undefined ? parameters[key] : def.defaultValue}
-                                                label={def.name}
-                                                onChange={(e) => handleParamChange(key, e.target.value)}
-                                            >
-                                                {def.choices.map(choice => (
-                                                    <MenuItem key={choice} value={choice}>{choice}</MenuItem>
-                                                ))}
-                                            </Select>
-                                            <Typography variant="caption" color="text.secondary">{def.description}</Typography>
-                                        </FormControl>
-                                    ) : def.type === 'string' ? (
-                                        <TextField
-                                            fullWidth
-                                            label={def.name}
-                                            value={parameters[key] !== undefined ? parameters[key] : def.defaultValue || ''}
-                                            onChange={(e) => handleParamChange(key, e.target.value)}
-                                            helperText={def.description}
-                                        />
-                                    ) : (
-                                        <Typography color="error">Unsupported parameter type: {def.type}</Typography>
-                                    )}
-                                </>
-                            )}
-                        </Grid>
-                    ))}
+                    {renderParametersRecursively(parameterDefs, parameters, enabledParams)}
 
                     <Grid item xs={12}>
                         <TextField

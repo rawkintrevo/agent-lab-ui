@@ -16,25 +16,29 @@ export const MODEL_PROVIDERS_LITELLM = [
                 supportedModes: ['text', 'image'],
                 systemInstruction: "You are GPT-5, a powerful language model.",
                 parameters: {
-                    temperature: {
-                        name: "Temperature",
-                        description: "Not available in GPT-5",
-                        type: "float",
-                        minValue: 1.0,
-                        maxValue: 1.0,
-                        defaultValue: 1.0,
-                        optional: false,
-                        mutually_exclusive: ["topP"]
-                    },
-                    topP: {
-                        name: "Top P",
-                        description: "Nucleus sampling parameter.",
-                        type: "float",
-                        minValue: 0.0,
-                        maxValue: 1.0,
-                        defaultValue: 1.0,
-                        optional: false,
-                        mutually_exclusive: ["temperature"]
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
                     }
                 }
             },
@@ -44,25 +48,29 @@ export const MODEL_PROVIDERS_LITELLM = [
                 supportedModes: ['text', 'image'],
                 systemInstruction: "You are GPT-5 Mini, a compact version of GPT-5.",
                 parameters: {
-                    temperature: {
-                        name: "Temperature",
-                        description: "Controls randomness (0 = deterministic, 2 = very random).",
-                        type: "float",
-                        minValue: 0.0,
-                        maxValue: 2.0,
-                        defaultValue: 0.7,
-                        optional: false,
-                        mutually_exclusive: ["topP"]
-                    },
-                    topP: {
-                        name: "Top P",
-                        description: "Nucleus sampling parameter.",
-                        type: "float",
-                        minValue: 0.0,
-                        maxValue: 1.0,
-                        defaultValue: 1.0,
-                        optional: false,
-                        mutually_exclusive: ["temperature"]
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
                     }
                 }
             },
@@ -72,25 +80,29 @@ export const MODEL_PROVIDERS_LITELLM = [
                 supportedModes: ['text', 'image'],
                 systemInstruction: "You are GPT-5 Nano, the smallest GPT-5 model.",
                 parameters: {
-                    temperature: {
-                        name: "Temperature",
-                        description: "Controls randomness (0 = deterministic, 2 = very random).",
-                        type: "float",
-                        minValue: 0.0,
-                        maxValue: 2.0,
-                        defaultValue: 0.7,
-                        optional: false,
-                        mutually_exclusive: ["topP"]
-                    },
-                    topP: {
-                        name: "Top P",
-                        description: "Nucleus sampling parameter.",
-                        type: "float",
-                        minValue: 0.0,
-                        maxValue: 1.0,
-                        defaultValue: 1.0,
-                        optional: false,
-                        mutually_exclusive: ["temperature"]
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
                     }
                 }
             },
@@ -119,6 +131,30 @@ export const MODEL_PROVIDERS_LITELLM = [
                         defaultValue: 1.0,
                         optional: false,
                         mutually_exclusive: ["temperature"]
+                    },
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
                     }
                 }
             },
@@ -147,6 +183,30 @@ export const MODEL_PROVIDERS_LITELLM = [
                         defaultValue: 1.0,
                         optional: false,
                         mutually_exclusive: ["temperature"]
+                    },
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
                     }
                 }
             },
@@ -175,6 +235,30 @@ export const MODEL_PROVIDERS_LITELLM = [
                         defaultValue: 1.0,
                         optional: false,
                         mutually_exclusive: ["temperature"]
+                    },
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
                     }
                 }
             },
@@ -203,6 +287,30 @@ export const MODEL_PROVIDERS_LITELLM = [
                         defaultValue: 1.0,
                         optional: false,
                         mutually_exclusive: ["temperature"]
+                    },
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
                     }
                 }
             },
@@ -231,6 +339,30 @@ export const MODEL_PROVIDERS_LITELLM = [
                         defaultValue: 1.0,
                         optional: false,
                         mutually_exclusive: ["temperature"]
+                    },
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
                     }
                 }
             },

@@ -306,22 +306,36 @@ async def _prepare_agent_kwargs_from_config(merged_agent_and_model_config, adk_a
     # Use parameters field for generation config if present
     parameters_field = merged_agent_and_model_config.get("parameters", {})
 
+    # Recursive helper to flatten parameters for known keys
+    def flatten_parameters(params, prefix=''):
+        flat = {}
+        for k, v in params.items():
+            if isinstance(v, dict) and any(isinstance(subv, dict) for subv in v.values()):
+                # Nested object, recurse
+                nested_flat = flatten_parameters(v, prefix=prefix + k + '.')
+                flat.update(nested_flat)
+            else:
+                flat[prefix + k] = v
+        return flat
+
+    flat_params = flatten_parameters(parameters_field)
+
     # Map known keys to generate_config_kwargs if present and valid
-    if "temperature" in parameters_field:
-        try: generate_config_kwargs["temperature"] = float(parameters_field["temperature"])
-        except (ValueError, TypeError): logger.warn(f"Invalid temperature: {parameters_field['temperature']}")
+    if "temperature" in flat_params:
+        try: generate_config_kwargs["temperature"] = float(flat_params["temperature"])
+        except (ValueError, TypeError): logger.warn(f"Invalid temperature: {flat_params['temperature']}")
 
-    if "maxOutputTokens" in parameters_field:
-        try: generate_config_kwargs["max_output_tokens"] = int(parameters_field["maxOutputTokens"])
-        except (ValueError, TypeError): logger.warn(f"Invalid maxOutputTokens: {parameters_field['maxOutputTokens']}")
+    if "maxOutputTokens" in flat_params:
+        try: generate_config_kwargs["max_output_tokens"] = int(flat_params["maxOutputTokens"])
+        except (ValueError, TypeError): logger.warn(f"Invalid maxOutputTokens: {flat_params['maxOutputTokens']}")
 
-    if "topP" in parameters_field:
-        try: generate_config_kwargs["top_p"] = float(parameters_field["topP"])
-        except (ValueError, TypeError): logger.warn(f"Invalid topP: {parameters_field['topP']}")
+    if "topP" in flat_params:
+        try: generate_config_kwargs["top_p"] = float(flat_params["topP"])
+        except (ValueError, TypeError): logger.warn(f"Invalid topP: {flat_params['topP']}")
 
-    if "topK" in parameters_field:
-        try: generate_config_kwargs["top_k"] = int(parameters_field["topK"])
-        except (ValueError, TypeError): logger.warn(f"Invalid topK: {parameters_field['topK']}")
+    if "topK" in flat_params:
+        try: generate_config_kwargs["top_k"] = int(flat_params["topK"])
+        except (ValueError, TypeError): logger.warn(f"Invalid topK: {flat_params['topK']}")
 
     if "stopSequences" in model_params and isinstance(model_params["stopSequences"], list):
         generate_config_kwargs["stop_sequences"] = [str(seq) for seq in model_params["stopSequences"]]
