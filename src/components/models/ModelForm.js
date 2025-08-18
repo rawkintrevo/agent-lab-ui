@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import {
     TextField, Button, Select, MenuItem, FormControl, InputLabel,
     Paper, Grid, Box, CircularProgress, Typography, FormHelperText, Slider,
-    FormControlLabel, Switch
+    FormControlLabel, Checkbox
 } from '@mui/material';
 import ProjectSelector from '../projects/ProjectSelector';
 import {
@@ -22,19 +22,58 @@ const ModelForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
     const [provider, setProvider] = useState(initialData.provider || DEFAULT_LITELLM_PROVIDER_ID);
     const [modelString, setModelString] = useState(initialData.modelString || DEFAULT_LITELLM_BASE_MODEL_ID);
     const [systemInstruction, setSystemInstruction] = useState(initialData.systemInstruction || '');
-    const [temperature, setTemperature] = useState(initialData.temperature ?? 0.7);
+
+    // New state for parameters and enabled flags
+    const [parameters, setParameters] = useState({});
+    const [enabledParams, setEnabledParams] = useState({});
 
     const [formError, setFormError] = useState('');
 
     const currentProviderConfig = getLiteLLMProviderConfig(provider);
     const availableBaseModels = currentProviderConfig?.models || [];
 
+    // Get parameter definitions for selected model
+    const parameterDefs = React.useMemo(() => {
+        if (!currentProviderConfig) return null;
+        const modelDef = currentProviderConfig.models.find(m => m.id === modelString);
+        return modelDef?.parameters || null;
+    }, [currentProviderConfig, modelString]);
+
+    // On provider or modelString or initialData.parameters change, initialize parameters and enabledParams
     useEffect(() => {
-        // When provider changes, reset the modelString to the first available model
+        if (!parameterDefs) {
+            setParameters({});
+            setEnabledParams({});
+            setSystemInstruction('');
+            return;
+        }
+        // Set systemInstruction from model definition if not overridden by initialData
+        const modelDef = currentProviderConfig.models.find(m => m.id === modelString);
+        if (modelDef?.systemInstruction && (!initialData.systemInstruction || initialData.systemInstruction === '')) {
+            setSystemInstruction(modelDef.systemInstruction);
+        } else if (initialData.systemInstruction) {
+            setSystemInstruction(initialData.systemInstruction);
+        }
+
+        const newParameters = {};
+        const newEnabledParams = {};
+        Object.entries(parameterDefs).forEach(([key, def]) => {
+            // Load from initialData.parameters if exists, else defaultValue
+            const initialValue = initialData.parameters?.[key];
+            newParameters[key] = initialValue !== undefined ? initialValue : def.defaultValue;
+            // Enable param if not optional or if initialData has a value
+            newEnabledParams[key] = !def.optional || (initialValue !== undefined);
+        });
+        setParameters(newParameters);
+        setEnabledParams(newEnabledParams);
+    }, [parameterDefs, initialData.parameters, currentProviderConfig, modelString, initialData.systemInstruction]);
+
+    useEffect(() => {
+        // When provider changes, reset modelString to first available or empty
         if (currentProviderConfig && availableBaseModels.length > 0) {
             setModelString(availableBaseModels[0].id);
         } else {
-            setModelString(''); // For custom providers
+            setModelString('');
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [provider]);
@@ -48,6 +87,49 @@ const ModelForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
             return;
         }
 
+        // Validate parameters
+        if (parameterDefs) {
+            for (const [key, def] of Object.entries(parameterDefs)) {
+                if (enabledParams[key]) {
+                    const val = parameters[key];
+                    if (def.type === 'integer' || def.type === 'float') {
+                        if (val === undefined || val === null || isNaN(val)) {
+                            setFormError(`Parameter "${def.name}" must be a number.`);
+                            return;
+                        }
+                        if (def.minValue !== undefined && val < def.minValue) {
+                            setFormError(`Parameter "${def.name}" must be at least ${def.minValue}.`);
+                            return;
+                        }
+                        if (def.maxValue !== undefined && val > def.maxValue) {
+                            setFormError(`Parameter "${def.name}" must be at most ${def.maxValue}.`);
+                            return;
+                        }
+                    } else if (def.type === 'choice' || def.type === 'boolean') {
+                        if (!def.choices.includes(val)) {
+                            setFormError(`Parameter "${def.name}" must be one of: ${def.choices.join(', ')}.`);
+                            return;
+                        }
+                    } else if (def.type === 'string') {
+                        if (typeof val !== 'string') {
+                            setFormError(`Parameter "${def.name}" must be a string.`);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Collect enabled parameters only
+        const parametersToSave = {};
+        if (parameterDefs) {
+            for (const key of Object.keys(parameterDefs)) {
+                if (enabledParams[key]) {
+                    parametersToSave[key] = parameters[key];
+                }
+            }
+        }
+
         const modelData = {
             name,
             description,
@@ -56,10 +138,32 @@ const ModelForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
             provider,
             modelString,
             systemInstruction,
-            temperature,
+            parameters: parametersToSave,
         };
 
         onSubmit(modelData);
+    };
+
+    const toggleEnabled = (key) => {
+        setEnabledParams((prev) => {
+            const newEnabled = { ...prev };
+            const currentlyEnabled = !!newEnabled[key];
+            if (!currentlyEnabled) {
+                // Enabling this param, disable mutually exclusive ones
+                const def = parameterDefs?.[key];
+                if (def?.mutually_exclusive) {
+                    def.mutually_exclusive.forEach((exKey) => {
+                        newEnabled[exKey] = false;
+                    });
+                }
+            }
+            newEnabled[key] = !currentlyEnabled;
+            return newEnabled;
+        });
+    };
+
+    const handleParamChange = (key, value) => {
+        setParameters((prev) => ({ ...prev, [key]: value }));
     };
 
     return (
@@ -96,7 +200,7 @@ const ModelForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                     </Grid>
                     <Grid item xs={12}>
                         <FormControlLabel
-                            control={<Switch checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />}
+                            control={<Checkbox checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />}
                             label="Public Model (visible to all users)"
                         />
                     </Grid>
@@ -142,20 +246,68 @@ const ModelForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                             />
                         )}
                     </Grid>
-                    <Grid item xs={12}>
-                        <Typography gutterBottom>Temperature: {temperature.toFixed(2)}</Typography>
-                        <Slider
-                            value={temperature}
-                            onChange={(e, newValue) => setTemperature(newValue)}
-                            aria-labelledby="temperature-slider"
-                            valueLabelDisplay="auto"
-                            step={0.05}
-                            marks
-                            min={0}
-                            max={1}
-                        />
-                        <FormHelperText>Controls randomness. Lower values are more deterministic.</FormHelperText>
-                    </Grid>
+
+                    {/* Dynamic Parameters Section */}
+                    {parameterDefs && Object.entries(parameterDefs).map(([key, def]) => (
+                        <Grid item xs={12} sm={def.type === 'choice' || def.type === 'boolean' ? 6 : 12} key={key}>
+                            <Box sx={{ mb: 1 }}>
+                                {def.optional && (
+                                    <FormControlLabel
+                                        control={
+                                            <Checkbox
+                                                checked={enabledParams[key] || false}
+                                                onChange={() => toggleEnabled(key)}
+                                            />
+                                        }
+                                        label={`Enable ${def.name}`}
+                                    />
+                                )}
+                            </Box>
+                            {(!def.optional || enabledParams[key]) && (
+                                <>
+                                    {(def.type === 'integer' || def.type === 'float') ? (
+                                        <>
+                                            <Typography gutterBottom>{def.name}</Typography>
+                                            <Slider
+                                                value={parameters[key] !== undefined ? parameters[key] : def.defaultValue}
+                                                min={def.minValue}
+                                                max={def.maxValue}
+                                                step={def.type === 'integer' ? 1 : (def.maxValue - def.minValue) / 100}
+                                                onChange={(_, v) => handleParamChange(key, v)}
+                                                valueLabelDisplay="auto"
+                                            />
+                                            <Typography variant="caption" color="text.secondary">{def.description}</Typography>
+                                        </>
+                                    ) : def.type === 'choice' || def.type === 'boolean' ? (
+                                        <FormControl fullWidth>
+                                            <InputLabel>{def.name}</InputLabel>
+                                            <Select
+                                                value={parameters[key] !== undefined ? parameters[key] : def.defaultValue}
+                                                label={def.name}
+                                                onChange={(e) => handleParamChange(key, e.target.value)}
+                                            >
+                                                {def.choices.map(choice => (
+                                                    <MenuItem key={choice} value={choice}>{choice}</MenuItem>
+                                                ))}
+                                            </Select>
+                                            <Typography variant="caption" color="text.secondary">{def.description}</Typography>
+                                        </FormControl>
+                                    ) : def.type === 'string' ? (
+                                        <TextField
+                                            fullWidth
+                                            label={def.name}
+                                            value={parameters[key] !== undefined ? parameters[key] : def.defaultValue || ''}
+                                            onChange={(e) => handleParamChange(key, e.target.value)}
+                                            helperText={def.description}
+                                        />
+                                    ) : (
+                                        <Typography color="error">Unsupported parameter type: {def.type}</Typography>
+                                    )}
+                                </>
+                            )}
+                        </Grid>
+                    ))}
+
                     <Grid item xs={12}>
                         <TextField
                             label="System Instruction (System Prompt)"

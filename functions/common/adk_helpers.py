@@ -303,22 +303,25 @@ async def _prepare_agent_kwargs_from_config(merged_agent_and_model_config, adk_a
     model_params = merged_agent_and_model_config
     generate_config_kwargs = {}
 
-    if "temperature" in model_params and model_params["temperature"] is not None:
-        try: generate_config_kwargs["temperature"] = float(model_params["temperature"])
-        except (ValueError, TypeError): logger.warn(f"Invalid temperature: {model_params['temperature']}")
+    # Use parameters field for generation config if present
+    parameters_field = merged_agent_and_model_config.get("parameters", {})
 
-        # NOTE: The ADK expects 'max_output_tokens' inside GenerateContentConfig, not 'max_tokens' as a direct kwarg.
-    if "maxOutputTokens" in model_params and model_params["maxOutputTokens"] is not None:
-        try: generate_config_kwargs["max_output_tokens"] = int(model_params["maxOutputTokens"])
-        except (ValueError, TypeError): logger.warn(f"Invalid maxOutputTokens: {model_params['maxOutputTokens']}")
+    # Map known keys to generate_config_kwargs if present and valid
+    if "temperature" in parameters_field:
+        try: generate_config_kwargs["temperature"] = float(parameters_field["temperature"])
+        except (ValueError, TypeError): logger.warn(f"Invalid temperature: {parameters_field['temperature']}")
 
-    if "topP" in model_params and model_params["topP"] is not None:
-        try: generate_config_kwargs["top_p"] = float(model_params["topP"])
-        except (ValueError, TypeError): logger.warn(f"Invalid topP: {model_params['topP']}")
+    if "maxOutputTokens" in parameters_field:
+        try: generate_config_kwargs["max_output_tokens"] = int(parameters_field["maxOutputTokens"])
+        except (ValueError, TypeError): logger.warn(f"Invalid maxOutputTokens: {parameters_field['maxOutputTokens']}")
 
-    if "topK" in model_params and model_params["topK"] is not None:
-        try: generate_config_kwargs["top_k"] = int(model_params["topK"])
-        except (ValueError, TypeError): logger.warn(f"Invalid topK: {model_params['topK']}")
+    if "topP" in parameters_field:
+        try: generate_config_kwargs["top_p"] = float(parameters_field["topP"])
+        except (ValueError, TypeError): logger.warn(f"Invalid topP: {parameters_field['topP']}")
+
+    if "topK" in parameters_field:
+        try: generate_config_kwargs["top_k"] = int(parameters_field["topK"])
+        except (ValueError, TypeError): logger.warn(f"Invalid topK: {parameters_field['topK']}")
 
     if "stopSequences" in model_params and isinstance(model_params["stopSequences"], list):
         generate_config_kwargs["stop_sequences"] = [str(seq) for seq in model_params["stopSequences"]]
