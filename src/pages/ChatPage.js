@@ -4,7 +4,16 @@ import { useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfig } from '../contexts/ConfigContext';
 import * as firebaseService from '../services/firebaseService';
-import { getChatDetails, listenToChatMessages, addChatMessage, getModelsForProjects, getAgentsForProjects, getEventsForMessage } from '../services/firebaseService';
+import {
+    getChatDetails,
+    listenToChatMessages,
+    addChatMessage,
+    getModelsForProjects,
+    getAgentsForProjects,
+    getEventsForMessage,
+    getSharedChatDetails,
+    getSharedChatMessages
+} from '../services/firebaseService';
 import { executeQuery } from '../services/agentService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorMessage from '../components/common/ErrorMessage';
@@ -45,7 +54,6 @@ import ContextDetailsDialog from '../components/context_stuffing/ContextDetailsD
 const parseParticipant = (str, models, agents, currentUser) => {
     if (!str) return { label: 'Unknown', icon: <PersonIcon /> };
 
-    // Special system message for context stuffing
     if (str === 'context_stuffed') {
         return { label: 'Context', icon: <AttachmentIcon color="info" /> };
     }
@@ -132,7 +140,6 @@ const convertPartToContextItem = (part) => {
 };
 
 const extractContextItemsFromMessage = (msg) => {
-    // For context messages, convert each part (including preview if present)
     if (msg?.participant === 'context_stuffed') {
         if (Array.isArray(msg.parts) && msg.parts.length > 0) {
             return msg.parts
@@ -140,7 +147,6 @@ const extractContextItemsFromMessage = (msg) => {
                 .filter(Boolean);
         }
     }
-    // Backward compatibility fallbacks (older fields)
     return msg.items || msg.contextItems || msg.stuffedContextItems || [];
 };
 
@@ -208,40 +214,69 @@ const ChatPage = ({ isReadOnly = false }) => {
     }, [messagesMap, activeLeafMsgId]);
 
     useEffect(() => {
-
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [conversationPath, sending, isContextLoading]);
 
     useEffect(() => {
         setLoading(true);
-        console.log('debug: useEffect for chatId', effectiveChatId);
+        setError(null);
         let unsubscribe;
+
         const setupListener = async () => {
             try {
-                const chatData = await getChatDetails(effectiveChatId);
-                setChat(chatData);
-                const [projAgents, projModels] = await Promise.all([
-                    getAgentsForProjects(chatData.projectIds || []),
-                    getModelsForProjects(chatData.projectIds || [])
-                ]);
-                setAgents(projAgents);
-                setModels(projModels);
-                unsubscribe = listenToChatMessages(effectiveChatId, (newMsgs) => {
-                    const newMessagesMap = newMsgs.reduce((acc, m) => ({ ...acc, [m.id]: m }), {});
+                let chatData;
+                if (sharedChatId) {
+                    // Fetch from /share collection for shared chats
+                    chatData = await getSharedChatDetails(sharedChatId);
+                    setChat(chatData);
+
+                    // Fetch messages once from share/{sharedChatId}/messages subcollection
+                    const sharedMessages = await getSharedChatMessages(sharedChatId);
+                    const newMessagesMap = sharedMessages.reduce((acc, m) => ({ ...acc, [m.id]: m }), {});
                     setMessagesMap(newMessagesMap);
-                    setActiveLeafMsgId(prevLeafId => {
-                        if (!prevLeafId || !newMessagesMap[prevLeafId]) {
-                            const leafCandidates = newMsgs.filter(m => !newMsgs.some(x => x.parentMessageId === m.id));
-                            return leafCandidates.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)).pop()?.id || null;
-                        }
-                        return findLeafOfBranch(newMessagesMap, prevLeafId);
+
+                    setActiveLeafMsgId(sharedMessages.length > 0 ? sharedMessages[sharedMessages.length - 1].id : null);
+
+                    // Shared chats do not have agents/models context
+                    setAgents([]);
+                    setModels([]);
+                } else {
+                    // Normal chat mode: fetch chat details and listen for real-time messages
+                    chatData = await getChatDetails(chatId);
+                    setChat(chatData);
+
+                    const [projAgents, projModels] = await Promise.all([
+                        getAgentsForProjects(chatData.projectIds || []),
+                        getModelsForProjects(chatData.projectIds || [])
+                    ]);
+                    setAgents(projAgents);
+                    setModels(projModels);
+
+                    unsubscribe = listenToChatMessages(chatId, (newMsgs) => {
+                        const newMessagesMap = newMsgs.reduce((acc, m) => ({ ...acc, [m.id]: m }), {});
+                        setMessagesMap(newMessagesMap);
+                        setActiveLeafMsgId(prevLeafId => {
+                            if (!prevLeafId || !newMessagesMap[prevLeafId]) {
+                                const leafCandidates = newMsgs.filter(m => !newMsgs.some(x => x.parentMessageId === m.id));
+                                return leafCandidates.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0)).pop()?.id || null;
+                            }
+                            return findLeafOfBranch(newMessagesMap, prevLeafId);
+                        });
                     });
-                });
-            } catch (err) { setError(err.message); } finally { setLoading(false); }
+                }
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
         };
+
         setupListener();
-        return () => { if (unsubscribe) unsubscribe(); };
-    }, [effectiveChatId]);
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, [chatId, sharedChatId]);
 
     // Sharing: On mount, if sharing is enabled and not read-only, check if chat is already shared
     useEffect(() => {
@@ -321,7 +356,11 @@ const ChatPage = ({ isReadOnly = false }) => {
                     parentMessageId: activeLeafMsgId
                 });
             }
-        } catch (err) { setError(err.message); } finally { setSending(false); }
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setSending(false);
+        }
     };
 
     // --- New Context Handling Logic ---
@@ -353,7 +392,11 @@ const ChatPage = ({ isReadOnly = false }) => {
                 throw new Error(result?.message || "Failed to process context item.");
             }
             // No need to handle local state; the backend creates the context message and the listener will update the UI.
-        } catch (err) { setError(`Failed to add context: ${err.message}`); } finally { setIsContextLoading(false); }
+        } catch (err) {
+            setError(`Failed to add context: ${err.message}`);
+        } finally {
+            setIsContextLoading(false);
+        }
     };
 
     // Context details dialog open helper
@@ -484,7 +527,6 @@ const ChatPage = ({ isReadOnly = false }) => {
                         const isContextMessage = msg.participant === 'context_stuffed';
                         const fileDataParts = (msg.parts || []).filter(p => p.file_data);
 
-                        // Derive pseudo-status: for assistant messages only, missing status means 'initializing'
                         const messageStatus = isAssistant ? (msg.status != null ? msg.status : 'initializing') : msg.status;
 
                         return (
@@ -537,14 +579,12 @@ const ChatPage = ({ isReadOnly = false }) => {
                                                         </ReactMarkdown>
                                                     );
                                                 }
-                                                // do not render file_data chips inside the user's/assistant's message anymore
                                                 return null;
                                             })
                                         )}
                                     </Paper>
                                 )}
 
-                                {/* Render each legacy file_data as its own context bubble below the message */}
                                 {!isContextMessage && fileDataParts.map((part, idx) => {
                                     const item = convertPartToContextItem(part);
                                     const openDetails = () => {

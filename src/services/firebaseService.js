@@ -243,6 +243,16 @@ export const getChatDetails = async (chatId) => {
     }
 };
 
+export const getSharedChatDetails = async (sharedChatId) => {
+    const docRef = doc(db, "share", sharedChatId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+        return { id: docSnap.id, ...docSnap.data() };
+    } else {
+        throw new Error("Shared chat not found");
+    }
+};
+
 export const updateChat = async (chatId, chatData) => {
     const chatRef = doc(db, "chats", chatId);
     await updateDoc(chatRef, {
@@ -304,6 +314,22 @@ export const getChatMessages = async (chatId) => {
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
+ export const getSharedChatMessages = async (sharedChatId) => {
+     const messagesColRef = collection(db, "share", sharedChatId, "messages");
+     const querySnapshot = await getDocs(messagesColRef);
+     const messages = [];
+     querySnapshot.forEach(docSnap => {
+         messages.push({ id: docSnap.id, ...docSnap.data() });
+     });
+     // Sort by timestamp ascending if timestamp field exists
+     messages.sort((a, b) => {
+         const aSeconds = a.timestamp?.seconds ?? 0;
+         const bSeconds = b.timestamp?.seconds ?? 0;
+         return aSeconds - bSeconds;
+     });
+     return messages;
+ };
 
 export const listenToChatMessages = (chatId, onUpdate) => {
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp", "asc"));
