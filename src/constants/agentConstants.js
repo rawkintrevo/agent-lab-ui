@@ -1,29 +1,539 @@
 // src/constants/agentConstants.js
 
 export const MODEL_PROVIDERS_LITELLM = [
-    {
+   {
         id: "openai",
         name: "OpenAI",
         apiBase: "https://api.openai.com/v1",
         requiresApiKeyInEnv: "OPENAI_API_KEY",
-        allowsCustomBase: true, // OpenAI allows specifying a different base URL (e.g., for proxies)
+        allowsCustomBase: true,
         allowsCustomKey: true,
         liteLlmModelPrefix: "openai",
         models: [
-            { id: "gpt-5-2025-08-07", name: "GPT-5 (2025-08-07)", supportedModes: ['text', 'image'] },
-            { id: "gpt-5-mini-2025-08-07", name: "GPT-5 Mini (2025-08-07)", supportedModes: ['text', 'image']},
-            { id: "gpt-5-Nano-2025-08-07", name: "GPT-5 Nano (2025-08-07)", supportedModes: ['text', 'image']},
-            { id: "o3-deep-research-2025-06-26", name: "OpenAI o3 Deep Research (2025-06-26)", supportedModes: ['text', 'image'] },
-            { id: "o4-mini-deep-research-2025-06-26", name: "OpenAI o4 Mini Deep Research (2025-06-26)", supportedModes: ['text', 'image'] },
-            { id: "o4-mini-2025-04-16", name:"OpenAI o4 Mini (2025-04-16)", supportedModes: ['text', 'image'] },
-            { id: "o3-mini-2025-01-31", name: "OpenAI o3 Mini (2025-01-31)", supportedModes: ['text'] },
-            { id: "o3-2025-04-16", name: "OpenAI o3 (2025-04-16)", supportedModes: ['text', 'image'] },
-            { id: "gpt-4.1-2025-04-14", name: "GPT-4.1 (2025-04-14)", supportedModes: ['text', 'image'] },
-            { id: "gpt-4.1-mini-2025-04-14", name: "GPT-4.1 Mini (2025-04-14)", supportedModes: ['text', 'image'] },
-            { id: "gpt-4.1-nano-2025-04-14", name: "GPT-4.1 Nano (2025-04-14)", supportedModes: ['text', 'image'] },
-            { id: "gpt-4o", name: "GPT-4o (Omni)", supportedModes: ['text', 'image'] },
-            { id: "gpt-4-turbo", name: "GPT-4 Turbo", supportedModes: ['text', 'image'] },
-            { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo", supportedModes: ['text'] },
+            {
+                id: "gpt-5-2025-08-07",
+                name: "GPT-5 (2025-08-07)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are GPT-5, a powerful language model.",
+                parameters: {
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                id: "gpt-5-mini-2025-08-07",
+                name: "GPT-5 Mini (2025-08-07)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are GPT-5 Mini, a compact version of GPT-5.",
+                parameters: {
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                id: "gpt-5-Nano-2025-08-07",
+                name: "GPT-5 Nano (2025-08-07)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are GPT-5 Nano, the smallest GPT-5 model.",
+                parameters: {
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                id: "o3-deep-research-2025-06-26",
+                name: "OpenAI o3 Deep Research (2025-06-26)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are OpenAI o3 Deep Research model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    },
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                id: "o4-mini-deep-research-2025-06-26",
+                name: "OpenAI o4 Mini Deep Research (2025-06-26)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are OpenAI o4 Mini Deep Research model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    },
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                id: "o4-mini-2025-04-16",
+                name:"OpenAI o4 Mini (2025-04-16)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are OpenAI o4 Mini model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    },
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                id: "o3-mini-2025-01-31",
+                name: "OpenAI o3 Mini (2025-01-31)",
+                supportedModes: ['text'],
+                systemInstruction: "You are OpenAI o3 Mini model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    },
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                id: "o3-2025-04-16",
+                name: "OpenAI o3 (2025-04-16)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are OpenAI o3 model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    },
+                    reasoning: {
+                        name: "Reasoning",
+                        description: "Reasoning parameters group",
+                        type: "object",
+                        optional: true,
+                        parameters: {
+                            summary: {
+                                name: "Summary",
+                                description: "Summary level for reasoning.",
+                                type: "choice",
+                                choices: ["auto", "concise", "detailed"],
+                                defaultValue: "auto",
+                                optional: false
+                            },
+                            effort: {
+                                name: "Effort",
+                                description: "Effort level for reasoning.",
+                                type: "choice",
+                                choices: ["minimal", "low", "medium", "high"],
+                                defaultValue: "medium",
+                                optional: false
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                id: "gpt-4.1-2025-04-14",
+                name: "GPT-4.1 (2025-04-14)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are GPT-4.1 model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    }
+                }
+            },
+            {
+                id: "gpt-4.1-mini-2025-04-14",
+                name: "GPT-4.1 Mini (2025-04-14)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are GPT-4.1 Mini model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    }
+                }
+            },
+            {
+                id: "gpt-4.1-nano-2025-04-14",
+                name: "GPT-4.1 Nano (2025-04-14)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are GPT-4.1 Nano model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    }
+                }
+            },
+            {
+                id: "gpt-4o",
+                name: "GPT-4o (Omni)",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are GPT-4o Omni model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    }
+                }
+            },
+            {
+                id: "gpt-4-turbo",
+                name: "GPT-4 Turbo",
+                supportedModes: ['text', 'image'],
+                systemInstruction: "You are GPT-4 Turbo model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    }
+                }
+            },
+            {
+                id: "gpt-3.5-turbo",
+                name: "GPT-3.5 Turbo",
+                supportedModes: ['text'],
+                systemInstruction: "You are GPT-3.5 Turbo model.",
+                parameters: {
+                    temperature: {
+                        name: "Temperature",
+                        description: "Controls randomness (0 = deterministic, 2 = very random).",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 2.0,
+                        defaultValue: 0.7,
+                        optional: false,
+                        mutually_exclusive: ["topP"]
+                    },
+                    topP: {
+                        name: "Top P",
+                        description: "Nucleus sampling parameter.",
+                        type: "float",
+                        minValue: 0.0,
+                        maxValue: 1.0,
+                        defaultValue: 1.0,
+                        optional: false,
+                        mutually_exclusive: ["temperature"]
+                    }
+                }
+            },
         ]
     },
     {
