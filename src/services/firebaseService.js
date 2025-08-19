@@ -243,6 +243,16 @@ export const getChatDetails = async (chatId) => {
     }
 };
 
+export const getSharedChatDetails = async (sharedChatId) => {
+    const docRef = doc(db, "share", sharedChatId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+        return { id: docSnap.id, ...docSnap.data() };
+    } else {
+        throw new Error("Shared chat not found");
+    }
+};
+
 export const updateChat = async (chatId, chatData) => {
     const chatRef = doc(db, "chats", chatId);
     await updateDoc(chatRef, {
@@ -304,6 +314,22 @@ export const getChatMessages = async (chatId) => {
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
+ export const getSharedChatMessages = async (sharedChatId) => {
+     const messagesColRef = collection(db, "share", sharedChatId, "messages");
+     const querySnapshot = await getDocs(messagesColRef);
+     const messages = [];
+     querySnapshot.forEach(docSnap => {
+         messages.push({ id: docSnap.id, ...docSnap.data() });
+     });
+     // Sort by timestamp ascending if timestamp field exists
+     messages.sort((a, b) => {
+         const aSeconds = a.timestamp?.seconds ?? 0;
+         const bSeconds = b.timestamp?.seconds ?? 0;
+         return aSeconds - bSeconds;
+     });
+     return messages;
+ };
 
 export const listenToChatMessages = (chatId, onUpdate) => {
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("timestamp", "asc"));
@@ -378,4 +404,54 @@ export const updateUserPermissions = async (targetUserId, permissionsData) => {
         console.error(`Error updating permissions for user ${targetUserId}:`, error);
         throw error;
     }
+};
+
+export const shareChat = async (originalChatId) => {
+    const originalRef = doc(db, "chats", originalChatId);
+    const originalSnap = await getDoc(originalRef);
+    if (!originalSnap.exists()) throw new Error("Original chat not found");
+
+    // 1. Create new share doc with same ID
+    const shareRef = doc(db, "share", originalChatId);
+    await setDoc(shareRef, {
+        ...originalSnap.data(),
+        id: originalChatId,
+        originalChatId,
+        sharedAt: serverTimestamp(),
+    });
+
+    // 2. Copy messages subcollection
+    const msgsSnap = await getDocs(collection(originalRef, "messages"));
+    const batch = writeBatch(db);
+    msgsSnap.forEach(docSnap => {
+        const targetRef = doc(db, "share", originalChatId, "messages", docSnap.id);
+        batch.set(targetRef, docSnap.data());
+    });
+    await batch.commit();
+    return originalChatId;
+};
+
+/**
+ * Returns the sharedChatId if this chat was already shared.
+ */
+export const getSharedChatIdForOriginal = async (originalChatId) => {
+    const shareDoc = await getDoc(doc(db, "share", originalChatId));
+    return shareDoc.exists() ? shareDoc.id : null;
+};
+
+// Deletes the shared chat document and all its messages
+export const unshareChat = async (sharedChatId) => {
+    const shareRef = doc(db, "share", sharedChatId);
+
+    // Get all messages in the shared chat
+    const messagesSnapshot = await getDocs(collection(shareRef, "messages"));
+
+    const batch = writeBatch(db);
+    messagesSnapshot.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+    });
+
+    batch.delete(shareRef);
+
+    await batch.commit();
 };
