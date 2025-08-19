@@ -22,6 +22,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import SaveIcon from '@mui/icons-material/Save';
 
+import LinkOffIcon from '@mui/icons-material/LinkOff';
+import { updateModel, updateAgentInFirestore } from '../services/firebaseService';
+
 function TabPanel(props) {
     const { children, value, index, ...other } = props;
     return (
@@ -110,6 +113,34 @@ const ProjectDetailsPage = () => {
         } catch (err) {
             console.error("Error creating chat:", err);
             setError(`Failed to create chat: ${err.message}`);
+        }
+    };
+
+    // Unlink model from project
+    const handleUnlinkModel = async (model) => {
+        if (!window.confirm(`Are you sure you want to unlink model "${model.name}" from this project?`)) return;
+        try {
+            // Remove projectId from model.projectIds array
+            const newProjectIds = (model.projectIds || []).filter(pid => pid !== projectId);
+            await updateModel(model.id, { projectIds: newProjectIds });
+            // Update local state
+            setModels(prev => prev.filter(m => m.id !== model.id));
+        } catch (err) {
+            console.error("Failed to unlink model:", err);
+            setError(`Failed to unlink model: ${err.message}`);
+        }
+    };
+
+    // Unlink agent from project
+    const handleUnlinkAgent = async (agent) => {
+        if (!window.confirm(`Are you sure you want to unlink agent "${agent.name}" from this project?`)) return;
+        try {
+            const newProjectIds = (agent.projectIds || []).filter(pid => pid !== projectId);
+            await updateAgentInFirestore(agent.id, { projectIds: newProjectIds });
+            setAgents(prev => prev.filter(a => a.id !== agent.id));
+        } catch (err) {
+            console.error("Failed to unlink agent:", err);
+            setError(`Failed to unlink agent: ${err.message}`);
         }
     };
 
@@ -321,18 +352,42 @@ const ProjectDetailsPage = () => {
                 <TabPanel value={tabValue} index={1}>
                     <List>
                         {agents.map(agent => (
-                            <ListItemButton key={agent.id} component={RouterLink} to={`/agent/${agent.id}/edit`}>
-                                <ListItemText primary={agent.name} secondary={agent.description} />
-                            </ListItemButton>
+                            <ListItem
+                                key={agent.id}
+                                secondaryAction={
+                                    <Tooltip title="Unlink from Project">
+                                        <IconButton edge="end" aria-label="unlink" onClick={() => handleUnlinkAgent(agent)}>
+                                            <LinkOffIcon />
+                                        </IconButton>
+                                    </Tooltip>
+                                }
+                                disablePadding
+                            >
+                                <ListItemButton component={RouterLink} to={`/agent/${agent.id}/edit`}>
+                                    <ListItemText primary={agent.name} secondary={agent.description} />
+                                </ListItemButton>
+                            </ListItem>
                         ))}
                     </List>
                 </TabPanel>
                 <TabPanel value={tabValue} index={2}>
                     <List>
                         {models.map(model => (
-                            <ListItemButton key={model.id} component={RouterLink} to={`/model/${model.id}`}>
-                                <ListItemText primary={model.name} secondary={model.description} />
-                            </ListItemButton>
+                            <ListItem
+                                key={model.id}
+                                secondaryAction={
+                                    <Tooltip title="Unlink from Project">
+                                        <IconButton edge="end" aria-label="unlink" onClick={() => handleUnlinkModel(model)}>
+                                            <LinkOffIcon />
+                                        </IconButton>
+                                    </Tooltip>
+                                }
+                                disablePadding
+                            >
+                                <ListItemButton component={RouterLink} to={`/model/${model.id}`}>
+                                    <ListItemText primary={model.name} secondary={model.description} />
+                                </ListItemButton>
+                            </ListItem>
                         ))}
                     </List>
                 </TabPanel>
