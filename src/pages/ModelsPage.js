@@ -10,12 +10,16 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import PublicIcon from '@mui/icons-material/Public';
+import DeleteIcon from '@mui/icons-material/Delete';
+import IconButton from '@mui/material/IconButton';
+import { deleteModel } from '../services/firebaseService'; 
 
-const ModelList = ({ models }) => (
+
+const ModelList = ({ models, onDelete }) => (
     <Grid container spacing={3}>
         {models.map((model) => (
-            <Grid item xs={12} sm={6} md={4} key={model.id}>
-                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Grid item xs={12} sm={6} md={4} key={model.id} sx={{ position: 'relative' }}>
+                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
                     <CardContent sx={{ flexGrow: 1 }}>
                         <Typography variant="h5" component="h2" gutterBottom>
                             {model.name} {model.isPublic && <PublicIcon fontSize="small" color="disabled" />}
@@ -35,6 +39,19 @@ const ModelList = ({ models }) => (
                             Edit
                         </Button>
                     </CardActions>
+                    <IconButton
+                        aria-label="delete"
+                        size="small"
+                        color="error"
+                        onClick={() => onDelete(model.id)}
+                        sx={{
+                            position: 'absolute',
+                            bottom: 8,
+                            right: 8,
+                        }}
+                    >
+                        <DeleteIcon />
+                    </IconButton>
                 </Card>
             </Grid>
         ))}
@@ -70,6 +87,17 @@ const ModelsPage = () => {
         fetchModels();
     }, [currentUser]);
 
+    const handleDeleteModel = async (modelId) => {
+        if (!window.confirm("Are you sure you want to delete this model?")) return;
+        try {
+            await deleteModel(modelId);
+            setMyModels((prev) => prev.filter(model => model.id !== modelId));
+        } catch (err) {
+            console.error("Failed to delete model:", err);
+            setError("Failed to delete model.");
+        }
+    };
+
     if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><LoadingSpinner /></Box>;
 
     return (
@@ -85,7 +113,7 @@ const ModelsPage = () => {
 
             <Typography variant="h5" component="h2" gutterBottom>Your Models</Typography>
             {myModels.length > 0 ? (
-                <ModelList models={myModels} />
+                <ModelList models={myModels} onDelete={handleDeleteModel} />
             ) : (
                 <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
                     <Typography color="text.secondary">You haven't created any models yet.</Typography>
@@ -96,7 +124,8 @@ const ModelsPage = () => {
 
             <Typography variant="h5" component="h2" gutterBottom>Public Models</Typography>
             {publicModels.length > 0 ? (
-                <ModelList models={publicModels} />
+                <ModelList models={publicModels} onDelete={() => {}} />
+                // No delete button or disable delete for public models if you want
             ) : (
                 <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
                     <Typography color="text.secondary">No public models are available.</Typography>
@@ -106,4 +135,4 @@ const ModelsPage = () => {
     );
 };
 
-export default ModelsPage;  
+export default ModelsPage;
