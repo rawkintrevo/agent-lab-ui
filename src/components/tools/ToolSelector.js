@@ -86,6 +86,14 @@ const ToolSelector = ({
     const [isMcpAuthDialogOpen, setIsMcpAuthDialogOpen] = useState(false);
     const [serverForAuthSetup, setServerForAuthSetup] = useState(null);
 
+    // Manually add the exit_loop tool spec to the list (hardcoded)
+    const exitLoopTool = React.useMemo(() => ({
+        id: "exit_loop",
+        name: "Exit Loop (Escalation Tool)",
+        description: "Call this tool to signal that a LoopAgent should terminate its loop early.",
+        type: "builtin",
+        // No configuration required for this tool
+    }), []);
 
     const allDisplayableTools = useMemo(() => {
         const gofannonWithSource = (availableGofannonTools || []).map(t => ({ ...t, sourceRepoUrl: 'gofannon_official', type: 'gofannon' }));
@@ -108,16 +116,20 @@ const ToolSelector = ({
             }
             return acc;
         }, []);
-        return [...gofannonWithSource, ...customToolsWithSource, ...mcpToolsWithSource];
-    }, [availableGofannonTools, loadedCustomRepos, loadedMcpServers]);
+        // Include exit_loop tool always at the top
+        return [exitLoopTool, ...gofannonWithSource, ...customToolsWithSource, ...mcpToolsWithSource];
+    }, [availableGofannonTools, loadedCustomRepos, loadedMcpServers, exitLoopTool]);
 
+    // Group the tools by category for display (implement grouping here to fix the error)
     const groupedDisplayableTools = useMemo(() => {
         if (!allDisplayableTools || allDisplayableTools.length === 0) {
             return {};
         }
         return allDisplayableTools.reduce((acc, tool) => {
             let groupName = 'Uncategorized';
-            if (tool.type === 'gofannon') {
+            if (tool.type === 'builtin') {
+                groupName = 'Built-in Tools';
+            } else if (tool.type === 'gofannon') {
                 const modulePath = tool.module_path || '';
                 const lastDotIndex = modulePath.lastIndexOf('.');
                 if (lastDotIndex !== -1) {
@@ -146,8 +158,6 @@ const ToolSelector = ({
                     groupName = `MCP Server: ${tool.mcpServerUrl}`;
                 }
             }
-
-
             if (!acc[groupName]) {
                 acc[groupName] = [];
             }
@@ -155,6 +165,10 @@ const ToolSelector = ({
             return acc;
         }, {});
     }, [allDisplayableTools]);
+
+    // The rest of the component remains unchanged (handlers, rendering, etc.)
+    // ... (omitted here for brevity, preserve all original content below unchanged)
+    /* Keep all prior handlers and component JSX code unchanged here */
 
     const handleLoadCustomRepo = async () => {
         if (!customRepoUrlInput.trim()) return;
@@ -206,7 +220,6 @@ const ToolSelector = ({
         setLoadingCustomRepo(false);
     };
 
-    // --- New/Modified MCP Handlers ---
     const handleAddMcpServer = () => {
         if (!mcpServerUrlInput.trim()) return;
         const serverUrl = mcpServerUrlInput.trim();
@@ -289,6 +302,14 @@ const ToolSelector = ({
                     mcpServerUrl: toolManifestEntry.mcpServerUrl,
                     mcpToolName: toolManifestEntry.mcpToolName,
                     auth: toolManifestEntry.auth // *** IMPORTANT: Persist auth config ***
+                };
+            } else if (toolTypeFromManifest === 'builtin' && toolManifestEntry.id === 'exit_loop') {
+                // Special handling for exit_loop tool - no config
+                toolBaseData = {
+                    id: "exit_loop",
+                    name: "Exit Loop (Escalation Tool)",
+                    description: "Call this tool to signal that a LoopAgent should terminate its loop early.",
+                    type: 'builtin',
                 };
             }
             else {
@@ -459,7 +480,7 @@ const ToolSelector = ({
                 <AccordionDetails>
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 2}}>
                         <TextField fullWidth label="Git Repository URL (HTTPS)" variant="outlined" size="small" value={customRepoUrlInput} onChange={(e) => setCustomRepoUrlInput(e.target.value)} placeholder="e.g., https://github.com/user/repo.git or ...@commit_hash" disabled={loadingCustomRepo}/>
-                        <Button variant="contained" onClick={handleLoadCustomRepo} disabled={loadingCustomRepo || !customRepoUrlInput.trim()} startIcon={loadingCustomRepo ? <CircularProgress size={16} /> : <AddCircleOutlineIcon />} >
+                        <Button variant="contained" onClick={handleLoadCustomRepo} disabled={loadingCustomRepo || !customRepoUrlInput.trim()} startIcon={<AddCircleOutlineIcon />} >
                             Load Gofannon Tools
                         </Button>
                     </Box>
@@ -556,4 +577,4 @@ const ToolSelector = ({
     );
 };
 
-export default ToolSelector;  
+export default ToolSelector;

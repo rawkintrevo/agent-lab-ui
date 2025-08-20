@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     TextField, Button, Select, MenuItem, FormControl, InputLabel,
     Grid, Dialog, DialogTitle, DialogContent, DialogActions, FormHelperText,
-    Typography, Alert // Removed Checkbox, FormControlLabel
+    Typography, Alert
 } from '@mui/material';
 import { v4 as uuidv4 } from 'uuid';
 import ToolSelector from '../tools/ToolSelector';
@@ -61,12 +61,11 @@ const ChildAgentFormDialog = ({
 
     const [instruction, setInstruction] = useState('');
     const [selectedTools, setSelectedTools] = useState([]);
-    // enableCodeExecution removed
     const [outputKey, setOutputKey] = useState('');
     const [formError, setFormError] = useState('');
     const [nameError, setNameError] = useState('');
     const [usedCustomRepoUrls, setUsedCustomRepoUrls] = useState([]);
-    const [usedMcpServerUrls, setUsedMcpServerUrls] = useState([]); // New state
+    const [usedMcpServerUrls, setUsedMcpServerUrls] = useState([]);
 
     const currentProviderConfig = getLiteLLMProviderConfig(selectedProviderId);
     const availableBaseModels = currentProviderConfig?.models || [];
@@ -122,14 +121,13 @@ const ChildAgentFormDialog = ({
             setLitellmApiBase(dataToLoad.litellm_api_base || '');
             setLitellmApiKey(dataToLoad.litellm_api_key || '');
             setInstruction(dataToLoad.instruction || '');
-            // enableCodeExecution removed
             setSelectedTools(dataToLoad.tools || []);
             setOutputKey(dataToLoad.outputKey || '');
             setUsedCustomRepoUrls(
                 dataToLoad.usedCustomRepoUrls ||
                 (dataToLoad.tools?.filter(t => t.type === 'custom_repo' && t.sourceRepoUrl).map(t => t.sourceRepoUrl) || [])
             );
-            setUsedMcpServerUrls( // Init MCP Urls for child
+            setUsedMcpServerUrls(
                 dataToLoad.usedMcpServerUrls ||
                 (dataToLoad.tools?.filter(t => t.type === 'mcp' && t.mcpServerUrl).map(t => t.mcpServerUrl) || [])
             );
@@ -178,21 +176,18 @@ const ChildAgentFormDialog = ({
     const handleUsedCustomRepoUrlsChange = (urls) => {
         setUsedCustomRepoUrls(urls);
     };
-    const handleUsedMcpServerUrlsChange = (urls) => { // New handler
+    const handleUsedMcpServerUrlsChange = (urls) => {
         setUsedMcpServerUrls(urls);
     };
 
-    // handleCodeExecutionChange removed
-
     const handleSelectedToolsChange = (newTools) => {
         setSelectedTools(newTools);
-        // enableCodeExecution logic removed
         const currentCustomRepoUrls = newTools
             .filter(st => st.type === 'custom_repo' && st.sourceRepoUrl)
             .map(st => st.sourceRepoUrl);
         setUsedCustomRepoUrls(Array.from(new Set(currentCustomRepoUrls)));
 
-        const currentMcpServerUrls = newTools // Update MCP URLs
+        const currentMcpServerUrls = newTools
             .filter(st => st.type === 'mcp' && st.mcpServerUrl)
             .map(st => st.mcpServerUrl);
         setUsedMcpServerUrls(Array.from(new Set(currentMcpServerUrls)));
@@ -215,6 +210,8 @@ const ChildAgentFormDialog = ({
             setNameError(agentNameError);
             return;
         }
+
+        const showLlmFields = currentChildAgentType === 'Agent' || currentChildAgentType === 'LoopAgent' || currentChildAgentType === 'LoopTerminationAgent';
 
         if (showLlmFields && !instruction.trim()) {
             setFormError('Child agent/step instruction is required.');
@@ -239,10 +236,9 @@ const ChildAgentFormDialog = ({
             description,
             agentType: currentChildAgentType,
             instruction: showLlmFields ? instruction : null,
-            tools: showLlmFields ? selectedTools : [], // enableCodeExecution removed
-            // enableCodeExecution removed
+            tools: showLlmFields ? selectedTools : [],
             usedCustomRepoUrls: showLlmFields ? usedCustomRepoUrls : [],
-            usedMcpServerUrls: showLlmFields ? usedMcpServerUrls : [], // Add MCP URLs
+            usedMcpServerUrls: showLlmFields ? usedMcpServerUrls : [],
 
             selectedProviderId: showLlmFields ? selectedProviderId : null,
             litellm_model_string: showLlmFields ? finalModelStringForSubmit : null,
@@ -273,7 +269,6 @@ const ChildAgentFormDialog = ({
             if (tool.type === 'mcp') {
                 return tool;
             }
-            // ADK built-in tools removed
             return tool;
         });
         childDataToSave.tools = adkReadyTools;
@@ -282,8 +277,7 @@ const ChildAgentFormDialog = ({
         onClose();
     };
 
-    // const codeExecutionDisabledByToolSelection = selectedTools.length > 0; // No longer needed
-    const showLlmFields = currentChildAgentType === 'Agent' || currentChildAgentType === 'LoopAgent';
+    const showLlmFields = currentChildAgentType === 'Agent' || currentChildAgentType === 'LoopAgent' || currentChildAgentType === 'LoopTerminationAgent';
 
 
     return (
@@ -317,10 +311,11 @@ const ChildAgentFormDialog = ({
                                 onChange={(e) => setCurrentChildAgentType(e.target.value)}
                                 label="Type (for this step)"
                             >
-                                <MenuItem value="Agent">Agent (Standard LLM Task)</MenuItem>
-                                <MenuItem value="LoopAgent">LoopAgent (Iterative LLM Task)</MenuItem>
+                                {[...AGENT_TYPES, "LoopTerminationAgent"].map(t => (
+                                    <MenuItem key={t} value={t}>{t === "LoopTerminationAgent" ? "LoopTerminationAgent (LLM with exit loop tool)" : t}</MenuItem>
+                                ))}
                             </Select>
-                            <FormHelperText>Choose if this step is a standard task or an iterative loop.</FormHelperText>
+                            <FormHelperText>Choose if this step is a standard task, iterative loop, or a loop termination evaluator.</FormHelperText>
                         </FormControl>
                     </Grid>
 
@@ -431,7 +426,6 @@ const ChildAgentFormDialog = ({
                                     error={formError.includes('instruction')}
                                 />
                             </Grid>
-                            {/* Code Execution Checkbox Removed */}
                             <Grid item xs={12}>
                                 <ToolSelector
                                     availableGofannonTools={availableGofannonTools}
@@ -440,9 +434,8 @@ const ChildAgentFormDialog = ({
                                     onRefreshGofannon={onRefreshGofannon}
                                     loadingGofannon={loadingGofannon}
                                     gofannonError={gofannonError}
-                                    // isCodeExecutionMode removed
                                     onUsedCustomRepoUrlsChange={handleUsedCustomRepoUrlsChange}
-                                    onUsedMcpServerUrlsChange={handleUsedMcpServerUrlsChange} // New prop
+                                    onUsedMcpServerUrlsChange={handleUsedMcpServerUrlsChange}
                                 />
                             </Grid>
                         </>
@@ -465,4 +458,4 @@ const ChildAgentFormDialog = ({
     );
 };
 
-export default ChildAgentFormDialog;  
+export default ChildAgentFormDialog;

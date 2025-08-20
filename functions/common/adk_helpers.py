@@ -1,4 +1,3 @@
-# functions/common/adk_helpers.py
 import re
 import os
 import importlib
@@ -19,6 +18,7 @@ from .config import get_gcp_project_config
 from google.adk.auth.auth_schemes import AuthScheme
 from google.adk.auth.auth_credential import AuthCredential, AuthCredentialTypes, HttpAuth, HttpCredentials
 from fastapi.openapi.models import APIKey, APIKeyIn, HTTPBearer
+from google.adk.tools.tool_context import ToolContext
 
 BACKEND_LITELLM_PROVIDER_CONFIG = {
     "openai": {"prefix": "openai", "apiKeyEnv": "OPENAI_API_KEY"},
@@ -436,7 +436,9 @@ async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_co
         "Agent": Agent, # This is LlmAgent
         "SequentialAgent": SequentialAgent,
         "LoopAgent": LoopAgent,
-        "ParallelAgent": ParallelAgent
+        "ParallelAgent": ParallelAgent,
+        # LoopTerminationAgent treated same as Agent, no new subclass needed
+        "LoopTerminationAgent": Agent,
     }.get(agent_type_str)
 
     if not AgentClass:
@@ -446,7 +448,7 @@ async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_co
 
     logger.info(f"Instantiating ADK Agent: Name='{adk_agent_name}', Type='{AgentClass.__name__}', Original Config Name='{original_agent_name}' (Context: parent='{parent_adk_name_for_context}', index={child_index})")
 
-    if AgentClass in [Agent, LoopAgent]:
+    if AgentClass in [Agent]:
         model_id = agent_config.get("modelId")
         if not model_id:
             raise ValueError(f"Agent '{original_agent_name}' is of type {agent_type_str} but is missing required 'modelId'.")
@@ -458,61 +460,60 @@ async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_co
         # Agent properties take precedence.
         merged_config = {**model_config, **agent_config}
 
-        if AgentClass == Agent:
-            agent_kwargs = await _prepare_agent_kwargs_from_config(
-                merged_config,
-                adk_agent_name,
-                context_for_log=f"(type: LlmAgent, parent: {parent_adk_name_for_context}, original: {original_agent_name})"
-            )
-            tool_count = len(agent_kwargs.get("tools", []))
-            logger.info(f"Final kwargs for LlmAgent '{adk_agent_name}' includes {tool_count} tools")
+        agent_kwargs = await _prepare_agent_kwargs_from_config(
+            merged_config,
+            adk_agent_name,
+            context_for_log=f"(type: LlmAgent-like, parent: {parent_adk_name_for_context}, original: {original_agent_name})"
+        )
+        tool_count = len(agent_kwargs.get("tools", []))
+        logger.info(f"Final kwargs for Agent (LlmAgent) '{adk_agent_name}' includes {tool_count} tools")
 
-            try:
-                return Agent(**agent_kwargs)
-            except Exception as e_agent_init:
-                logger.error(f"Initialization Error for LlmAgent '{adk_agent_name}' (from config '{original_agent_name}'): {e_agent_init}")
-                logger.error(f"Args passed: {agent_kwargs}") # Log the arguments that caused the error
-                detailed_traceback = traceback.format_exc()
-                logger.error(f"Traceback:\n{detailed_traceback}")
-                raise ValueError(f"Failed to instantiate LlmAgent '{original_agent_name}': {e_agent_init}.")
+        try:
+            return Agent(**agent_kwargs)
+        except Exception as e_agent_init:
+            logger.error(f"Initialization Error for Agent '{adk_agent_name}' (from config '{original_agent_name}'): {e_agent_init}")
+            logger.error(f"Args passed: {agent_kwargs}") # Log the arguments that caused the error
+            detailed_traceback = traceback.format_exc()
+            logger.error(f"Traceback:\n{detailed_traceback}")
+            raise ValueError(f"Failed to instantiate Agent '{original_agent_name}': {e_agent_init}.")
 
-        elif AgentClass == LoopAgent:
-            looped_agent_config_name = f"{original_agent_name}_looped_child_config" # For logging
-            looped_agent_adk_name = sanitize_adk_agent_name(f"{adk_agent_name}_looped_child_instance", prefix_if_needed="looped_")
+    elif AgentClass == LoopAgent:
+        child_agent_configs = agent_config.get("childAgents", [])
+        if not child_agent_configs:
+            logger.info(f"LoopAgent '{original_agent_name}' has no child agents configured.")
+            instantiated_child_agents = []
+        else:
+            instantiated_child_agents = []
+            for idx, child_config in enumerate(child_agent_configs):
+                try:
+                    child_agent_instance = await instantiate_adk_agent_from_config(
+                        child_config,
+                        parent_adk_name_for_context=adk_agent_name,
+                        child_index=idx
+                    )
+                    instantiated_child_agents.append(child_agent_instance)
+                except Exception as e_child:
+                    logger.error(f"Failed to instantiate child agent {idx} for LoopAgent '{original_agent_name}': {e_child}")
+                    raise ValueError(f"Error processing child agent for '{original_agent_name}': {e_child}")
 
-            looped_agent_kwargs = await _prepare_agent_kwargs_from_config( # Await the async call
-                merged_config, # Pass the merged config
-                looped_agent_adk_name,
-                context_for_log=f"(looped child of LoopAgent '{adk_agent_name}', original config: '{looped_agent_config_name}')"
-            )
-            logger.debug(f"Final kwargs for Looped Child ADK Agent '{looped_agent_adk_name}' (for LoopAgent '{adk_agent_name}'): {looped_agent_kwargs}")
-            try:
-                looped_child_agent_instance = Agent(**looped_agent_kwargs) # Agent is LlmAgent
-            except Exception as e_loop_child_init:
-                logger.error(f"Initialization Error for Looped Child Agent '{looped_agent_adk_name}' (from config '{looped_agent_config_name}'): {e_loop_child_init}")
-                logger.error(f"Args passed to looped child Agent constructor: {looped_agent_kwargs}")
-                detailed_traceback = traceback.format_exc()
-                logger.error(f"Traceback:\n{detailed_traceback}")
-                raise ValueError(f"Failed to instantiate looped child agent for '{original_agent_name}': {e_loop_child_init}.")
-
-            max_iterations_str = agent_config.get("maxLoops", "3")  # Using maxLoops as config key, rename to max_iterations internally
-            try:
-                max_iterations = int(max_iterations_str)
-                if max_iterations <= 0:  # Must be positive
-                    logger.warning(f"maxLoops for LoopAgent '{adk_agent_name}' is {max_iterations}, which is not positive. Defaulting to 3.")
-                    max_iterations = 3
-            except ValueError:
-                logger.warning(f"Invalid maxLoops value '{max_iterations_str}' for LoopAgent '{adk_agent_name}'. Defaulting to 3.")
+        max_iterations_str = agent_config.get("maxLoops", "3")  # Using maxLoops as config key, rename to max_iterations internally
+        try:
+            max_iterations = int(max_iterations_str)
+            if max_iterations <= 0:  # Must be positive
+                logger.warning(f"maxLoops for LoopAgent '{adk_agent_name}' is {max_iterations}, which is not positive. Defaulting to 3.")
                 max_iterations = 3
+        except ValueError:
+            logger.warning(f"Invalid maxLoops value '{max_iterations_str}' for LoopAgent '{adk_agent_name}'. Defaulting to 3.")
+            max_iterations = 3
 
-            loop_agent_kwargs = {
-                "name": adk_agent_name,
-                "description": agent_config.get("description"),
-                "sub_agents": [looped_child_agent_instance],  # Pass as list
-                "max_iterations": max_iterations,              # Correct parameter name
-            }
-            logger.debug(f"Final kwargs for LoopAgent '{adk_agent_name}': {{name, description, max_iterations, sub_agents count: {len(loop_agent_kwargs['sub_agents'])}}}")
-            return LoopAgent(**loop_agent_kwargs)
+        loop_agent_kwargs = {
+            "name": adk_agent_name,
+            "description": agent_config.get("description"),
+            "sub_agents": instantiated_child_agents,
+            "max_iterations": max_iterations,
+        }
+        logger.debug(f"Final kwargs for LoopAgent '{adk_agent_name}': {{name, description, max_iterations, sub_agents count: {len(loop_agent_kwargs['sub_agents'])}}}")
+        return LoopAgent(**loop_agent_kwargs)
 
     elif AgentClass == SequentialAgent or AgentClass == ParallelAgent:
         child_agent_configs = agent_config.get("childAgents", [])
@@ -523,15 +524,14 @@ async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_co
             instantiated_child_agents = []
             for idx, child_config in enumerate(child_agent_configs):
                 try:
-                    child_agent_instance = await instantiate_adk_agent_from_config( # Await the recursive async call
+                    child_agent_instance = await instantiate_adk_agent_from_config(
                         child_config,
-                        parent_adk_name_for_context=adk_agent_name, # Pass current agent's ADK name as context
+                        parent_adk_name_for_context=adk_agent_name,
                         child_index=idx
                     )
                     instantiated_child_agents.append(child_agent_instance)
                 except Exception as e_child:
                     logger.error(f"Failed to instantiate child agent at index {idx} for {AgentClass.__name__} '{original_agent_name}': {e_child}")
-                    # Potentially re-raise or handle to allow partial construction if desired
                     raise ValueError(f"Error processing child agent for '{original_agent_name}': {e_child}")
 
         orchestrator_kwargs = {
@@ -547,11 +547,23 @@ async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_co
         raise ValueError(f"Unhandled agent type '{agent_type_str}' during recursive instantiation for '{original_agent_name}'.")
 
 
+class EscalationTool:
+    """A tool that triggers early loop termination by setting event.actions.escalate = True."""
+
+    name = "exit_loop"
+    description = "Call this tool to signal loop termination."
+
+    def __call__(self, tool_context: ToolContext):
+        tool_context.actions.escalate = True
+        return {"message": "Loop terminated by EscalationTool call."}
+
+
 __all__ = [
     'generate_vertex_deployment_display_name',
     'get_adk_artifact_service',
     'get_model_config_from_firestore',
     'instantiate_tool',
     'sanitize_adk_agent_name',
-    'instantiate_adk_agent_from_config'
+    'instantiate_adk_agent_from_config',
+    'EscalationTool',
 ]
