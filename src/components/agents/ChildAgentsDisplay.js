@@ -2,19 +2,20 @@
 import React from 'react';
 import {
     Typography, Box, Accordion, AccordionSummary, AccordionDetails,
-    List, ListItem, ListItemText, Paper, Chip
+    List, ListItem, ListItemText, Chip
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 
 const ChildAgentsDisplay = ({ agent }) => {
-    if (!agent || !['SequentialAgent', 'ParallelAgent'].includes(agent.agentType) || !agent.childAgents || agent.childAgents.length === 0) {
+    if (!agent || !['SequentialAgent', 'ParallelAgent', 'LoopAgent'].includes(agent.agentType) || !agent.childAgents || agent.childAgents.length === 0) {
         return null;
     }
 
     let childAgentSectionTitle = "Child Agents";
     if (agent.agentType === 'SequentialAgent') childAgentSectionTitle = "Sequential Steps";
     if (agent.agentType === 'ParallelAgent') childAgentSectionTitle = "Parallel Tasks";
+    if (agent.agentType === 'LoopAgent') childAgentSectionTitle = "Loop Steps";
 
 
     return (
@@ -27,7 +28,7 @@ const ChildAgentsDisplay = ({ agent }) => {
                     <Accordion key={child.name + index + (child.id || '')} sx={{ mb: 1 }} TransitionProps={{ unmountOnExit: true }}>
                         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                             <Typography sx={{ fontWeight: 'medium' }}>{index + 1}. {child.name}</Typography>
-                            <Chip label={`Model: ${child.model}`} size="small" sx={{ ml: 2 }} variant="outlined" />
+                            <Chip label={`Model ID: ${child.modelId || 'N/A'}`} size="small" sx={{ ml: 2 }} variant="outlined" />
                             {child.outputKey && <Chip label={`Output: ${child.outputKey}`} size="small" sx={{ ml: 1 }} variant="outlined" color="info" />}
                         </AccordionSummary>
                         <AccordionDetails sx={{ bgcolor: 'action.hover', borderTop: '1px solid', borderColor: 'divider' }}>
@@ -41,12 +42,6 @@ const ChildAgentsDisplay = ({ agent }) => {
                                     <strong>Output Key:</strong> {child.outputKey}
                                 </Typography>
                             )}
-                            <Typography variant="body2" paragraph>
-                                <strong>Instruction:</strong>
-                                <Paper variant="outlined" component="pre" sx={{ p: 1, mt: 0.5, whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'auto', fontSize: '0.875rem' }}>
-                                    {child.instruction}
-                                </Paper>
-                            </Typography>
                             {child.tools && child.tools.length > 0 ? (
                                 <>
                                     <Typography variant="body2" fontWeight="medium">Tools ({child.tools.length}):</Typography>
@@ -69,4 +64,4 @@ const ChildAgentsDisplay = ({ agent }) => {
     );
 };
 
-export default ChildAgentsDisplay;  
+export default ChildAgentsDisplay;

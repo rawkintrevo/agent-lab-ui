@@ -1,19 +1,14 @@
 // src/components/agents/ChildAgentFormDialog.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     TextField, Button, Select, MenuItem, FormControl, InputLabel,
     Grid, Dialog, DialogTitle, DialogContent, DialogActions, FormHelperText,
-    Typography, Alert
+    Typography
 } from '@mui/material';
 import { v4 as uuidv4 } from 'uuid';
 import ToolSelector from '../tools/ToolSelector';
-import {
-    AGENT_TYPES,
-    MODEL_PROVIDERS_LITELLM,
-    DEFAULT_LITELLM_PROVIDER_ID,
-    DEFAULT_LITELLM_BASE_MODEL_ID,
-    getLiteLLMProviderConfig
-} from '../../constants/agentConstants';
+import { AGENT_TYPES } from '../../constants/agentConstants';
+import ModelSelector from '../models/ModelSelector';
 
 
 const AGENT_NAME_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -45,6 +40,7 @@ const ChildAgentFormDialog = ({
                                   onSave,
                                   childAgentData,
                                   availableGofannonTools,
+                                  projectIds,
                                   loadingGofannon,
                                   gofannonError,
                                   onRefreshGofannon
@@ -53,125 +49,36 @@ const ChildAgentFormDialog = ({
     const [description, setDescription] = useState('');
     const [currentChildAgentType, setCurrentChildAgentType] = useState(AGENT_TYPES[0]);
 
-    const [selectedProviderId, setSelectedProviderId] = useState(DEFAULT_LITELLM_PROVIDER_ID);
-    const [selectedBaseModelId, setSelectedBaseModelId] = useState(DEFAULT_LITELLM_BASE_MODEL_ID);
-    const [inputtedModelString, setInputtedModelString] = useState(DEFAULT_LITELLM_BASE_MODEL_ID);
-    const [litellmApiBase, setLitellmApiBase] = useState('');
-    const [litellmApiKey, setLitellmApiKey] = useState('');
-
-    const [instruction, setInstruction] = useState('');
+    const [modelId, setModelId] = useState(''); // State for the selected model ID
     const [selectedTools, setSelectedTools] = useState([]);
     const [outputKey, setOutputKey] = useState('');
     const [formError, setFormError] = useState('');
     const [nameError, setNameError] = useState('');
+    // eslint-disable-next-line
     const [usedCustomRepoUrls, setUsedCustomRepoUrls] = useState([]);
+    // eslint-disable-next-line
     const [usedMcpServerUrls, setUsedMcpServerUrls] = useState([]);
 
-    const currentProviderConfig = getLiteLLMProviderConfig(selectedProviderId);
-    const availableBaseModels = currentProviderConfig?.models || [];
-    const initialDataProcessedRef = useRef(false);
+
 
 
     useEffect(() => {
         if (open) {
-            initialDataProcessedRef.current = false;
             const dataToLoad = childAgentData || {};
 
             setName(dataToLoad.name || '');
             setDescription(dataToLoad.description || '');
             setCurrentChildAgentType(dataToLoad.agentType || AGENT_TYPES[0]);
 
-            let initialSelectedProvider = dataToLoad.selectedProviderId || DEFAULT_LITELLM_PROVIDER_ID;
-            let initialBaseModelName = dataToLoad.litellm_model_string || DEFAULT_LITELLM_BASE_MODEL_ID;
-
-            if (!dataToLoad.selectedProviderId && dataToLoad.litellm_model_string) {
-                const fullModelStr = dataToLoad.litellm_model_string;
-                let foundProvider = MODEL_PROVIDERS_LITELLM.find(
-                    p => p.liteLlmModelPrefix && fullModelStr.startsWith(p.liteLlmModelPrefix + "/")
-                );
-
-                if (foundProvider) {
-                    initialSelectedProvider = foundProvider.id;
-                    initialBaseModelName = fullModelStr.substring(foundProvider.liteLlmModelPrefix.length + 1);
-                } else {
-                    if (fullModelStr.startsWith("azure/")) {
-                        initialSelectedProvider = "azure";
-                        initialBaseModelName = fullModelStr.substring("azure/".length);
-                    } else {
-                        initialSelectedProvider = 'custom';
-                        initialBaseModelName = fullModelStr;
-                    }
-                }
-            }
-            setSelectedProviderId(initialSelectedProvider);
-
-            const providerConf = getLiteLLMProviderConfig(initialSelectedProvider);
-            if (providerConf?.id === 'custom' || providerConf?.id === 'openai_compatible') {
-                setSelectedBaseModelId('');
-                setInputtedModelString(initialBaseModelName);
-            } else if (providerConf?.models.some(m => m.id === initialBaseModelName)) {
-                setSelectedBaseModelId(initialBaseModelName);
-                setInputtedModelString(initialBaseModelName);
-            } else {
-                const firstModelOfProvider = providerConf?.models[0]?.id || '';
-                setSelectedBaseModelId(firstModelOfProvider);
-                setInputtedModelString(firstModelOfProvider);
-            }
-
-            setLitellmApiBase(dataToLoad.litellm_api_base || '');
-            setLitellmApiKey(dataToLoad.litellm_api_key || '');
-            setInstruction(dataToLoad.instruction || '');
+            setModelId(dataToLoad.modelId || '');
             setSelectedTools(dataToLoad.tools || []);
             setOutputKey(dataToLoad.outputKey || '');
-            setUsedCustomRepoUrls(
-                dataToLoad.usedCustomRepoUrls ||
-                (dataToLoad.tools?.filter(t => t.type === 'custom_repo' && t.sourceRepoUrl).map(t => t.sourceRepoUrl) || [])
-            );
-            setUsedMcpServerUrls(
-                dataToLoad.usedMcpServerUrls ||
-                (dataToLoad.tools?.filter(t => t.type === 'mcp' && t.mcpServerUrl).map(t => t.mcpServerUrl) || [])
-            );
 
             setFormError('');
             setNameError('');
-            initialDataProcessedRef.current = true;
         }
     }, [childAgentData, open]);
 
-    useEffect(() => {
-        if (!open || !initialDataProcessedRef.current) return;
-
-        const providerConf = getLiteLLMProviderConfig(selectedProviderId);
-        if (providerConf) {
-            if (providerConf.id === 'custom' || providerConf.id === 'openai_compatible') {
-                setSelectedBaseModelId('');
-                if (childAgentData?.selectedProviderId !== 'custom' && childAgentData?.selectedProviderId !== 'openai_compatible' &&
-                    (currentProviderConfig?.id !== 'custom' && currentProviderConfig?.id !== 'openai_compatible')) {
-                    setInputtedModelString('');
-                } else {
-                    setInputtedModelString(childAgentData?.litellm_model_string || '');
-                }
-            } else if (providerConf.models && providerConf.models.length > 0) {
-                const firstModelId = providerConf.models[0].id;
-                const currentBaseIsValid = providerConf.models.some(m => m.id === selectedBaseModelId);
-                const newBaseModel = currentBaseIsValid ? selectedBaseModelId : firstModelId;
-                setSelectedBaseModelId(newBaseModel);
-                setInputtedModelString(newBaseModel);
-            } else {
-                setSelectedBaseModelId('');
-                setInputtedModelString('');
-            }
-            setLitellmApiBase(providerConf.allowsCustomBase ? (litellmApiBase || '') : (providerConf.apiBase || ''));
-            setLitellmApiKey('');
-        }
-    }, [selectedProviderId, open, childAgentData, litellmApiBase, selectedBaseModelId, currentProviderConfig]);
-
-    useEffect(() => {
-        if (!open || !initialDataProcessedRef.current) return;
-        if (selectedProviderId !== 'custom' && selectedProviderId !== 'openai_compatible' && selectedBaseModelId) {
-            setInputtedModelString(selectedBaseModelId);
-        }
-    }, [selectedBaseModelId, selectedProviderId, open]);
 
     const handleUsedCustomRepoUrlsChange = (urls) => {
         setUsedCustomRepoUrls(urls);
@@ -211,45 +118,19 @@ const ChildAgentFormDialog = ({
             return;
         }
 
-        const showLlmFields = currentChildAgentType === 'Agent' || currentChildAgentType === 'LoopAgent' || currentChildAgentType === 'LoopTerminationAgent';
+        const showLlmFields = currentChildAgentType === 'Agent' || currentChildAgentType === 'LoopAgent';
 
-        if (showLlmFields && !instruction.trim()) {
-            setFormError('Child agent/step instruction is required.');
-            return;
-        }
-
-        let finalModelStringForSubmit;
-        if (selectedProviderId === 'custom' || selectedProviderId === 'openai_compatible') {
-            finalModelStringForSubmit = inputtedModelString.trim();
-        } else {
-            finalModelStringForSubmit = selectedBaseModelId;
-        }
-
-        if (showLlmFields && !finalModelStringForSubmit) {
-            setFormError('Model String is required for child agent/step.');
+        if (showLlmFields && !modelId) {
+            setFormError('A Model must be selected for this step/agent type.');
             return;
         }
 
         const childDataToSave = {
             id: childAgentData?.id || uuidv4(),
-            name,
-            description,
+            name, description,
             agentType: currentChildAgentType,
-            instruction: showLlmFields ? instruction : null,
+            modelId: showLlmFields ? modelId : null,
             tools: showLlmFields ? selectedTools : [],
-            usedCustomRepoUrls: showLlmFields ? usedCustomRepoUrls : [],
-            usedMcpServerUrls: showLlmFields ? usedMcpServerUrls : [],
-
-            selectedProviderId: showLlmFields ? selectedProviderId : null,
-            litellm_model_string: showLlmFields ? finalModelStringForSubmit : null,
-            litellm_api_base: (showLlmFields && currentProviderConfig?.allowsCustomBase && litellmApiBase.trim())
-                ? litellmApiBase.trim()
-                : (currentProviderConfig?.id === 'custom' || currentProviderConfig?.id === 'openai_compatible' || currentProviderConfig?.id === 'azure'
-                    ? (litellmApiBase.trim() || null)
-                    : (currentProviderConfig?.apiBase || null)),
-            litellm_api_key: (showLlmFields && currentProviderConfig?.allowsCustomKey && litellmApiKey.trim())
-                ? litellmApiKey.trim()
-                : null,
         };
 
         const trimmedOutputKey = outputKey.trim();
@@ -257,27 +138,11 @@ const ChildAgentFormDialog = ({
             childDataToSave.outputKey = trimmedOutputKey;
         }
 
-        if (currentChildAgentType === 'LoopAgent' && showLlmFields) {
-            childDataToSave.maxLoops = childAgentData?.maxLoops || 3;
-        }
-
-        const adkReadyTools = (childDataToSave.tools || []).map(tool => {
-            if (tool.type === 'gofannon' || tool.type === 'custom_repo') {
-                const { sourceRepoUrl, type, ...adkToolProps } = tool;
-                return adkToolProps;
-            }
-            if (tool.type === 'mcp') {
-                return tool;
-            }
-            return tool;
-        });
-        childDataToSave.tools = adkReadyTools;
-
         onSave(childDataToSave);
         onClose();
     };
 
-    const showLlmFields = currentChildAgentType === 'Agent' || currentChildAgentType === 'LoopAgent' || currentChildAgentType === 'LoopTerminationAgent';
+    const showLlmFields = currentChildAgentType === 'Agent' || currentChildAgentType === 'LoopAgent';
 
 
     return (
@@ -311,119 +176,31 @@ const ChildAgentFormDialog = ({
                                 onChange={(e) => setCurrentChildAgentType(e.target.value)}
                                 label="Type (for this step)"
                             >
-                                {[...AGENT_TYPES, "LoopTerminationAgent"].map(t => (
-                                    <MenuItem key={t} value={t}>{t === "LoopTerminationAgent" ? "LoopTerminationAgent (LLM with exit loop tool)" : t}</MenuItem>
-                                ))}
+                                {AGENT_TYPES.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
                             </Select>
-                            <FormHelperText>Choose if this step is a standard task, iterative loop, or a loop termination evaluator.</FormHelperText>
+                            <FormHelperText>Choose if this step is a standard agent or an orchestrator.</FormHelperText>
                         </FormControl>
                     </Grid>
 
                     {showLlmFields && (
                         <>
-                            <Grid item xs={12} sm={6}>
-                                <FormControl fullWidth variant="outlined">
-                                    <InputLabel id="child-modelProvider-label">LLM Provider (LiteLLM)</InputLabel>
-                                    <Select
-                                        labelId="child-modelProvider-label"
-                                        value={selectedProviderId}
-                                        onChange={(e) => setSelectedProviderId(e.target.value)}
-                                        label="LLM Provider (LiteLLM)"
-                                    >
-                                        {MODEL_PROVIDERS_LITELLM.map(provider => <MenuItem key={provider.id} value={provider.id}>{provider.name}</MenuItem>)}
-                                    </Select>
-                                    {currentProviderConfig?.customInstruction && (
-                                        <Alert severity="info" sx={{mt:1, fontSize:'0.8rem'}}>{currentProviderConfig.customInstruction}</Alert>
-                                    )}
-                                </FormControl>
+                            <Grid item xs={12}>
+                                <ModelSelector
+                                    selectedModelId={modelId}
+                                    onSelectionChange={setModelId}
+                                    projectIds={projectIds}
+                                    required
+                                    helperText="Select a model. The model's system prompt and temperature will be used."
+                                    disabled={!projectIds || projectIds.length === 0}
+                                />
+                                {(!projectIds || projectIds.length === 0) && <FormHelperText error>Select a project on the main form to see available models.</FormHelperText>}
                             </Grid>
-
-                            {selectedProviderId !== 'custom' && selectedProviderId !== 'openai_compatible' && availableBaseModels.length > 0 && (
-                                <Grid item xs={12}>
-                                    <FormControl fullWidth variant="outlined">
-                                        <InputLabel id="child-baseModel-label">Base Model</InputLabel>
-                                        <Select
-                                            labelId="child-baseModel-label"
-                                            value={selectedBaseModelId}
-                                            onChange={(e) => setSelectedBaseModelId(e.target.value)}
-                                            label="Base Model"
-                                        >
-                                            {availableBaseModels.map(m => <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
-                                        </Select>
-                                    </FormControl>
-                                </Grid>
-                            )}
-                            {(selectedProviderId === 'custom' || selectedProviderId === 'openai_compatible' || (currentProviderConfig && availableBaseModels.length === 0)) && (
-                                <Grid item xs={12}>
-                                    <TextField
-                                        label="Model String"
-                                        id="child-inputtedModelString"
-                                        value={inputtedModelString}
-                                        onChange={(e) => setInputtedModelString(e.target.value)}
-                                        fullWidth variant="outlined" required
-                                        helperText={
-                                            currentProviderConfig?.id === 'custom'
-                                                ? "Enter the full LiteLLM model string (e.g., 'ollama/mistral', 'groq/mixtral-8x7b-32768')."
-                                                : currentProviderConfig?.id === 'openai_compatible'
-                                                    ? "Enter the model name expected by your OpenAI-compatible endpoint."
-                                                    : `No predefined models for ${currentProviderConfig?.name}. Enter model string.`
-                                        }
-                                        error={formError.includes('Model String')}
-                                    />
-                                </Grid>
-                            )}
-
-
-                            {currentProviderConfig?.allowsCustomBase && (
-                                <Grid item xs={12} sm={(currentProviderConfig?.allowsCustomKey) ? 6 : 12}>
-                                    <TextField
-                                        label="API Base URL (Override)"
-                                        id="child-litellmApiBase"
-                                        value={litellmApiBase}
-                                        onChange={(e) => setLitellmApiBase(e.target.value)}
-                                        fullWidth variant="outlined"
-                                        placeholder={currentProviderConfig?.apiBase || (currentProviderConfig?.id === 'custom' || currentProviderConfig?.id === 'openai_compatible' || currentProviderConfig?.id === 'azure' ? 'Required if not in backend env' : 'Provider default will be used')}
-                                        helperText={
-                                            (currentProviderConfig?.id === 'custom' || currentProviderConfig?.id === 'openai_compatible' || currentProviderConfig?.id === 'azure')
-                                                ? "Required if not set in backend environment variables."
-                                                : "Optional. Overrides provider default if set in backend env."
-                                        }
-                                    />
-                                </Grid>
-                            )}
-                            {currentProviderConfig?.allowsCustomKey && (
-                                <Grid item xs={12} sm={(currentProviderConfig?.allowsCustomBase) ? 6 : 12}>
-                                    <TextField
-                                        label="API Key (Override)"
-                                        id="child-litellmApiKey"
-                                        type="password"
-                                        value={litellmApiKey}
-                                        onChange={(e) => setLitellmApiKey(e.target.value)}
-                                        fullWidth variant="outlined"
-                                        helperText={
-                                            currentProviderConfig?.requiresApiKeyInEnv
-                                                ? `Optional. Overrides API key from backend env var (${currentProviderConfig.requiresApiKeyInEnv}).`
-                                                : "Optional. Provide if your custom endpoint needs an API key and it's not in backend env."
-                                        }
-                                        autoComplete="new-password"
-                                    />
-                                </Grid>
-                            )}
                             <Grid item xs={12}>
                                 <TextField
                                     label="Output Key (Optional)" value={outputKey}
                                     onChange={(e) => setOutputKey(e.target.value)}
                                     fullWidth variant="outlined"
                                     helperText="If set, agent's text response is saved to session state."
-                                />
-                            </Grid>
-                            <Grid item xs={12}>
-                                <TextField
-                                    label="Instruction (System Prompt)" value={instruction}
-                                    onChange={(e) => setInstruction(e.target.value)}
-                                    multiline rows={4} required={showLlmFields}
-                                    fullWidth variant="outlined" placeholder="e.g., You are a specialized researcher..."
-                                    error={formError.includes('instruction')}
                                 />
                             </Grid>
                             <Grid item xs={12}>

@@ -124,7 +124,7 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
             return;
         }
 
-        if ((agentType === 'Agent' || agentType === 'LoopTerminationAgent') && !modelId) {
+        if ((agentType === 'Agent') && !modelId) {
             setFormError('A Model must be selected for this agent type.');
             return;
         }
@@ -183,7 +183,7 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
     };
 
 
-    const showParentConfig = agentType === 'Agent' || agentType === 'LoopAgent' || agentType === 'LoopTerminationAgent';
+    const showParentConfig = agentType === 'Agent' || agentType === 'LoopAgent';
     const showChildConfig = agentType === 'SequentialAgent' || agentType === 'ParallelAgent' || agentType === 'LoopAgent';
     const childAgentSectionTitle = agentType === 'SequentialAgent' ? "Sequential Steps" : agentType === 'ParallelAgent' ? "Parallel Tasks" : "Loop Steps";
 
@@ -213,14 +213,14 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                         <FormControl fullWidth variant="outlined">
                             <InputLabel id="agentType-label">Agent Type</InputLabel>
                             <Select labelId="agentType-label" value={agentType} onChange={(e) => setAgentType(e.target.value)} label="Agent Type">
-                                {[...AGENT_TYPES, "LoopTerminationAgent"].map(type => <MenuItem key={type} value={type}>{type}</MenuItem>)}
+                                {AGENT_TYPES.map(type => <MenuItem key={type} value={type}>{type}</MenuItem>)}
                             </Select>
                         </FormControl>
                     </Grid>
 
                     {showParentConfig && (
                         <>
-                            {(agentType === 'Agent' || agentType === 'LoopTerminationAgent') && (
+                            {(agentType === 'Agent') && (
                                 <Grid item xs={12}>
                                     <ModelSelector
                                         selectedModelId={modelId}
@@ -241,7 +241,7 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                                     helperText="If set, the agent's final text response is saved to this key in the session state."
                                 />
                             </Grid>
-                            {(agentType === 'Agent' || agentType === 'LoopTerminationAgent') && (
+                            {(agentType === 'Agent') && (
                                 <Grid item xs={12}>
                                     <Typography variant="subtitle1" sx={{mb:1}}>
                                         Tools
@@ -275,7 +275,7 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                             </Grid>
                             <Grid item xs={12}>
                                 <Typography variant="h6" gutterBottom>{childAgentSectionTitle}</Typography>
-                                <Alert severity="info" sx={{mb: 2}}>For LoopAgent, define the steps (child agents) to loop through each iteration. These can include Agents or LoopTerminationAgents.</Alert>
+                                <Alert severity="info" sx={{mb: 2}}>For LoopAgent, define the steps (child agents) to loop through each iteration. One step should have the 'Exit Loop' tool to terminate early based on its logic.</Alert>
                                 <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
                                     <Button variant="outlined" startIcon={<AddCircleOutlineIcon />} onClick={handleOpenChildFormForNew} >
                                         Add New Step
@@ -359,6 +359,7 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                 onClose={handleCloseChildForm}
                 onSave={handleSaveChildAgent}
                 childAgentData={editingChild}
+                projectIds={projectIds}
                 availableGofannonTools={availableGofannonTools}
             />
             <ExistingAgentSelectorDialog

@@ -396,6 +396,40 @@ const ToolSelector = ({
 
     return (
         <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
+            {/* --- New Built-in Tools Section --- */}
+            <Box mb={2}>
+                <Typography
+                    variant="subtitle1" component="h4"
+                    sx={{ mb: 0.5, pb: 0.5, borderBottom: '1px solid', borderColor: 'divider', fontWeight: 'medium' }}
+                >
+                    Built-in Tools
+                </Typography>
+                <FormGroup sx={{ pl: 1 }}>
+                    <Grid container spacing={0}>
+                        {[exitLoopTool].map(tool => {
+                            const isSelected = selectedTools.some(st => st.id === tool.id);
+                            return (
+                                <Grid item xs={12} sm={6} key={tool.id} sx={{display: 'flex', alignItems: 'center'}}>
+                                    <FormControlLabel
+                                        control={
+                                            <Checkbox checked={isSelected} onChange={() => handleToolToggle(tool, tool.type)} name={tool.id} size="small" />
+                                        }
+                                        label={
+                                            <Typography variant="body2" title={tool.description || tool.name}>{tool.name}</Typography>
+                                        }
+                                        sx={{ mr: 0, flexGrow:1 }}
+                                    />
+                                </Grid>
+                            );
+                        })}
+                    </Grid>
+                </FormGroup>
+                <FormHelperText sx={{ml: 1, mt: 1}}>
+                    Essential tools provided by the platform. The 'Exit Loop' tool is required for a child agent within a LoopAgent to terminate the loop based on its instructions.
+                </FormHelperText>
+            </Box>
+
+
             <Accordion defaultExpanded={false} sx={{ '&.MuiAccordion-root:before': { display: 'none' }, boxShadow: 'none', borderBottom: '1px solid', borderColor: 'divider'}}>
                 <AccordionSummary
                     expandIcon={<ExpandMoreIcon />}
@@ -419,9 +453,9 @@ const ToolSelector = ({
                     {gofannonError && <Alert severity="error" sx={{ mb: 1 }}>{gofannonError}</Alert>}
                     {loadingGofannon && <Box sx={{display:'flex', justifyContent:'center', my:2}}><CircularProgress size={24} /></Box>}
 
-                    {!loadingGofannon && Object.keys(groupedDisplayableTools).filter(group => !group.startsWith("MCP Server:")).length > 0 ? (
+                    {!loadingGofannon && Object.keys(groupedDisplayableTools).filter(group => !group.startsWith("MCP Server:") && group !== 'Built-in Tools').length > 0 ? (
                         Object.entries(groupedDisplayableTools)
-                            .filter(([groupName]) => !groupName.startsWith("MCP Server:"))
+                            .filter(([groupName]) => !groupName.startsWith("MCP Server:") && groupName !== 'Built-in Tools')
                             .sort(([groupA], [groupB]) => groupA.localeCompare(groupB))
                             .map(([groupName, toolsInGroup]) => (
                                 <Box key={groupName} sx={{ mb: 2 }}>
