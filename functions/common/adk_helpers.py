@@ -4,10 +4,14 @@ import importlib
 import traceback
 
 from .core import logger, db
-from google.adk.agents import Agent, SequentialAgent, LoopAgent, ParallelAgent # LlmAgent is aliased as Agent
+from google.adk.agents import Agent, SequentialAgent, LoopAgent, ParallelAgent, BaseAgent
 from google.adk.models.lite_llm import LiteLlm
 from google.genai import types as genai_types
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
+
+from google.adk.events import Event, EventActions
+from google.adk.agents.invocation_context import InvocationContext
+from typing import AsyncGenerator
 
 from google.adk.tools.mcp_tool.mcp_session_manager import (
     StreamableHTTPConnectionParams,
@@ -178,6 +182,7 @@ async def _prepare_agent_kwargs_from_config(merged_agent_and_model_config, adk_a
                 logger.info(f"Successfully instantiated tool '{tc.get('id', f'index_{tc_idx}')}' (type: {tool_type}) for agent '{adk_agent_name}'.")
             except ValueError as e:
                 logger.warn(f"Skipping tool for agent '{adk_agent_name}' due to error: {e} (Tool config: {tc.get('id', f'index_{tc_idx}')}, Type: {tool_type})")
+       
         else:
             logger.warn(f"Unknown or unhandled tool type '{tool_type}' for agent '{adk_agent_name}'. Tool config: {tc}")
 
@@ -437,8 +442,7 @@ async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_co
         "SequentialAgent": SequentialAgent,
         "LoopAgent": LoopAgent,
         "ParallelAgent": ParallelAgent,
-        # LoopTerminationAgent treated same as Agent, no new subclass needed
-        "LoopTerminationAgent": Agent,
+        "LoopTerminationAgent": CheckStatusAndEscalate,
     }.get(agent_type_str)
 
     if not AgentClass:
@@ -448,7 +452,13 @@ async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_co
 
     logger.info(f"Instantiating ADK Agent: Name='{adk_agent_name}', Type='{AgentClass.__name__}', Original Config Name='{original_agent_name}' (Context: parent='{parent_adk_name_for_context}', index={child_index})")
 
-    if AgentClass in [Agent]:
+    if AgentClass == CheckStatusAndEscalate:
+        return CheckStatusAndEscalate(
+            name=adk_agent_name,
+            description=agent_config.get("description", "Checks state for 'end_loop' flag and escalates to terminate the loop.")
+        )
+
+    elif AgentClass in [Agent]:
         model_id = agent_config.get("modelId")
         if not model_id:
             raise ValueError(f"Agent '{original_agent_name}' is of type {agent_type_str} but is missing required 'modelId'.")
@@ -542,20 +552,25 @@ async def instantiate_adk_agent_from_config(agent_config, parent_adk_name_for_co
         logger.debug(f"Final kwargs for {AgentClass.__name__} '{adk_agent_name}': {{name, description, num_sub_agents: {len(instantiated_child_agents)}}}")
         return AgentClass(**orchestrator_kwargs)
 
+    
     else:
         # This case should be caught by the AgentClass check at the beginning
         raise ValueError(f"Unhandled agent type '{agent_type_str}' during recursive instantiation for '{original_agent_name}'.")
 
 
-class EscalationTool:
-    """A tool that triggers early loop termination by setting event.actions.escalate = True."""
-
-    name = "exit_loop"
-    description = "Call this tool to signal loop termination."
-
-    def __call__(self, tool_context: ToolContext):
-        tool_context.actions.escalate = True
-        return {"message": "Loop terminated by EscalationTool call."}
+class CheckStatusAndEscalate(BaseAgent):
+    """A simple agent that checks session state for a key and escalates to end a loop."""
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        # Check the 'end_loop' key in the session state
+        status = ctx.session.state.get("end_loop", "false").lower()
+        should_stop = (status == "true")
+        
+        logger.info(f"CheckStatusAndEscalate Agent '{self.name}': Found end_loop='{status}', escalating: {should_stop}")
+        
+        # Yield a single event with the escalation action
+        yield Event(author=self.name, actions=EventActions(escalate=should_stop))
 
 
 __all__ = [
@@ -565,5 +580,4 @@ __all__ = [
     'instantiate_tool',
     'sanitize_adk_agent_name',
     'instantiate_adk_agent_from_config',
-    'EscalationTool',
 ]

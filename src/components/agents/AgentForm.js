@@ -16,6 +16,7 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import LibraryAddIcon from '@mui/icons-material/LibraryAdd';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import StopCircleIcon from '@mui/icons-material/StopCircle';
 
 // New Imports
 import ProjectSelector from '../projects/ProjectSelector';
@@ -182,6 +183,21 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
         setEditingChild(null);
     };
 
+    const handleAddTerminationStep = () => {
+        const terminationAgent = {
+            id: uuidv4(),
+            name: 'Check Loop Status & Exit',
+            description: 'Checks the `end_loop` state variable. If it is "true", the loop will terminate.',
+            agentType: 'LoopTerminationAgent',
+            // No modelId or tools needed for this agent type
+        };
+        // Check if a termination step already exists to prevent adding multiple
+        if (childAgents.some(c => c.agentType === 'LoopTerminationAgent')) {
+            alert("A loop termination step has already been added.");
+            return;
+        }
+        setChildAgents(prev => [...prev, terminationAgent]);
+    };
 
     const showParentConfig = agentType === 'Agent' || agentType === 'LoopAgent';
     const showChildConfig = agentType === 'SequentialAgent' || agentType === 'ParallelAgent' || agentType === 'LoopAgent';
@@ -275,13 +291,18 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                             </Grid>
                             <Grid item xs={12}>
                                 <Typography variant="h6" gutterBottom>{childAgentSectionTitle}</Typography>
-                                <Alert severity="info" sx={{mb: 2}}>For LoopAgent, define the steps (child agents) to loop through each iteration. One step should have the 'Exit Loop' tool to terminate early based on its logic.</Alert>
+                                <Alert severity="info" sx={{mb: 2}}>
+                                    For a LoopAgent, define the steps to run in each iteration. One sub-agent should be instructed to set an Output Key named <strong>end_loop</strong> to the value <strong>true</strong> when the loop should stop. Then, add the special "Loop Termination" step to check this state.
+                                </Alert>
                                 <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
                                     <Button variant="outlined" startIcon={<AddCircleOutlineIcon />} onClick={handleOpenChildFormForNew} >
                                         Add New Step
                                     </Button>
                                     <Button variant="outlined" color="secondary" startIcon={<LibraryAddIcon />} onClick={handleOpenExistingAgentSelector} >
                                         Add Existing Agent as Step
+                                    </Button>
+                                    <Button variant="outlined" color="warning" startIcon={<StopCircleIcon />} onClick={handleAddTerminationStep} >
+                                        Add Loop Termination Step
                                     </Button>
                                 </Stack>
                                 {childAgents.length > 0 ? (
@@ -290,10 +311,18 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                                             <ListItem key={child.id || index} divider={index < childAgents.length -1}>
                                                 <ListItemText
                                                     primary={`${index + 1}. ${child.name}`}
-                                                    secondary={`Type: ${child.agentType || 'Agent'} | Model ID: ${child.modelId || 'N/A'}`}
+                                                    secondary={
+                                                        child.agentType === 'LoopTerminationAgent' 
+                                                        ? `Type: ${child.agentType}`
+                                                        : `Type: ${child.agentType || 'Agent'} | Model ID: ${child.modelId || 'N/A'}`
+                                                    }
                                                 />
                                                 <ListItemSecondaryAction>
-                                                    <IconButton onClick={() => handleOpenChildFormForEdit(child)}><EditIcon /></IconButton>
+                                                    {child.agentType !== 'LoopTerminationAgent' ? (
+                                                        <IconButton onClick={() => handleOpenChildFormForEdit(child)}><EditIcon /></IconButton>
+                                                    ) : (
+                                                        <IconButton disabled><EditIcon /></IconButton>
+                                                    )}
                                                     <IconButton onClick={() => handleDeleteChildAgent(child.id)}><DeleteIcon /></IconButton>
                                                 </ListItemSecondaryAction>
                                             </ListItem>

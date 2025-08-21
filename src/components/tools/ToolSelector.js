@@ -86,15 +86,6 @@ const ToolSelector = ({
     const [isMcpAuthDialogOpen, setIsMcpAuthDialogOpen] = useState(false);
     const [serverForAuthSetup, setServerForAuthSetup] = useState(null);
 
-    // Manually add the exit_loop tool spec to the list (hardcoded)
-    const exitLoopTool = React.useMemo(() => ({
-        id: "exit_loop",
-        name: "Exit Loop (Escalation Tool)",
-        description: "Call this tool to signal that a LoopAgent should terminate its loop early.",
-        type: "builtin",
-        // No configuration required for this tool
-    }), []);
-
     const allDisplayableTools = useMemo(() => {
         const gofannonWithSource = (availableGofannonTools || []).map(t => ({ ...t, sourceRepoUrl: 'gofannon_official', type: 'gofannon' }));
         const customToolsWithSource = loadedCustomRepos.reduce((acc, repo) => {
@@ -117,8 +108,8 @@ const ToolSelector = ({
             return acc;
         }, []);
         // Include exit_loop tool always at the top
-        return [exitLoopTool, ...gofannonWithSource, ...customToolsWithSource, ...mcpToolsWithSource];
-    }, [availableGofannonTools, loadedCustomRepos, loadedMcpServers, exitLoopTool]);
+        return [ ...gofannonWithSource, ...customToolsWithSource, ...mcpToolsWithSource];
+    }, [availableGofannonTools, loadedCustomRepos, loadedMcpServers]);
 
     // Group the tools by category for display (implement grouping here to fix the error)
     const groupedDisplayableTools = useMemo(() => {
@@ -127,9 +118,7 @@ const ToolSelector = ({
         }
         return allDisplayableTools.reduce((acc, tool) => {
             let groupName = 'Uncategorized';
-            if (tool.type === 'builtin') {
-                groupName = 'Built-in Tools';
-            } else if (tool.type === 'gofannon') {
+            if (tool.type === 'gofannon') {
                 const modulePath = tool.module_path || '';
                 const lastDotIndex = modulePath.lastIndexOf('.');
                 if (lastDotIndex !== -1) {
@@ -303,16 +292,7 @@ const ToolSelector = ({
                     mcpToolName: toolManifestEntry.mcpToolName,
                     auth: toolManifestEntry.auth // *** IMPORTANT: Persist auth config ***
                 };
-            } else if (toolTypeFromManifest === 'builtin' && toolManifestEntry.id === 'exit_loop') {
-                // Special handling for exit_loop tool - no config
-                toolBaseData = {
-                    id: "exit_loop",
-                    name: "Exit Loop (Escalation Tool)",
-                    description: "Call this tool to signal that a LoopAgent should terminate its loop early.",
-                    type: 'builtin',
-                };
-            }
-            else {
+            } else {
                 return;
             }
 
@@ -395,41 +375,7 @@ const ToolSelector = ({
 
 
     return (
-        <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
-            {/* --- New Built-in Tools Section --- */}
-            <Box mb={2}>
-                <Typography
-                    variant="subtitle1" component="h4"
-                    sx={{ mb: 0.5, pb: 0.5, borderBottom: '1px solid', borderColor: 'divider', fontWeight: 'medium' }}
-                >
-                    Built-in Tools
-                </Typography>
-                <FormGroup sx={{ pl: 1 }}>
-                    <Grid container spacing={0}>
-                        {[exitLoopTool].map(tool => {
-                            const isSelected = selectedTools.some(st => st.id === tool.id);
-                            return (
-                                <Grid item xs={12} sm={6} key={tool.id} sx={{display: 'flex', alignItems: 'center'}}>
-                                    <FormControlLabel
-                                        control={
-                                            <Checkbox checked={isSelected} onChange={() => handleToolToggle(tool, tool.type)} name={tool.id} size="small" />
-                                        }
-                                        label={
-                                            <Typography variant="body2" title={tool.description || tool.name}>{tool.name}</Typography>
-                                        }
-                                        sx={{ mr: 0, flexGrow:1 }}
-                                    />
-                                </Grid>
-                            );
-                        })}
-                    </Grid>
-                </FormGroup>
-                <FormHelperText sx={{ml: 1, mt: 1}}>
-                    Essential tools provided by the platform. The 'Exit Loop' tool is required for a child agent within a LoopAgent to terminate the loop based on its instructions.
-                </FormHelperText>
-            </Box>
-
-
+        <Paper variant="outlined" sx={{ p: 2, mt: 2 }}> 
             <Accordion defaultExpanded={false} sx={{ '&.MuiAccordion-root:before': { display: 'none' }, boxShadow: 'none', borderBottom: '1px solid', borderColor: 'divider'}}>
                 <AccordionSummary
                     expandIcon={<ExpandMoreIcon />}

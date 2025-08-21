@@ -106,7 +106,8 @@ def _deploy_agent_to_vertex_logic(req: https_fn.CallableRequest):
             requirements=requirements_list,
             display_name=deployment_display_name,
             description=agent_config_data.get("description", f"ADK Agent: {deployment_display_name}"),
-            env_vars=vertex_env_vars if vertex_env_vars else None
+            env_vars=vertex_env_vars if vertex_env_vars else None,
+            extra_packages=['./common', './handlers']
         )
         logger.info(f"Vertex AI agent deployment successful for '{agent_doc_id}'. Resource: {remote_app.resource_name}")
         db.collection("agents").document(agent_doc_id).update({
