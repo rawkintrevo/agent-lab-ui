@@ -160,7 +160,15 @@ async def _run_adk_agent(local_adk_agent, adk_content_for_run, adk_user_id, assi
     batch = db.batch()
     for index, event_dict in enumerate(all_events):
         event_doc_ref = events_collection_ref.document()
-        event_with_meta = {**event_dict, "eventIndex": index, "timestamp": firestore.SERVER_TIMESTAMP}
+        # Sanitize event dictionary to ensure all nested values are Firestore-compatible.
+        try:
+            sanitized_event_dict = json.loads(json.dumps(event_dict, default=str))
+            logger.info(f"[_run_adk_agent] sanitized_event_dict: {sanitized_event_dict}")
+        except Exception as e_json:
+            logger.error(f"[_run_adk_agent] Could not sanitize event at index {index} via JSON. Error: {e_json}. Skipping event. Original data: {repr(event_dict)}")
+            continue
+        
+        event_with_meta = {**sanitized_event_dict, "eventIndex": index, "timestamp": firestore.SERVER_TIMESTAMP}
         batch.set(event_doc_ref, event_with_meta)
     if all_events:
         batch.commit()
@@ -225,8 +233,15 @@ async def _run_vertex_agent(resource_name, adk_content_for_run, adk_user_id, ass
     batch = db.batch()
     for index, event_dict in enumerate(all_events):
         event_doc_ref = events_collection_ref.document()
-        logger.info(f"[_run_vertex_agent] Writing event {index} to Firestore: {event_dict}")
-        event_with_meta = {**event_dict, "eventIndex": index, "timestamp": firestore.SERVER_TIMESTAMP}
+        # Sanitize event dictionary to ensure all nested values are Firestore-compatible.
+        try:
+            sanitized_event_dict = json.loads(json.dumps(event_dict, default=str))
+            logger.info(f"[_run_adk_agent] sanitized_event_dict: {sanitized_event_dict}")
+        except Exception as e_json:
+            logger.error(f"[_run_adk_agent] Could not sanitize event at index {index} via JSON. Error: {e_json}. Skipping event. Original data: {repr(event_dict)}")
+            continue
+
+        event_with_meta = {**sanitized_event_dict, "eventIndex": index, "timestamp": firestore.SERVER_TIMESTAMP}
         batch.set(event_doc_ref, event_with_meta)
     if all_events:
         batch.commit()
