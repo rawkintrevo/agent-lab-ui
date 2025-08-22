@@ -15,7 +15,6 @@ from handlers.vertex_agent_handler import (
 )
 
 from handlers.vertex.task import run_agent_task_wrapper
-from handlers.gofannon_handler import _get_gofannon_tool_manifest_logic
 from handlers.context_handler import (
     _fetch_web_page_content_logic,
     _fetch_git_repo_contents_logic,
@@ -26,12 +25,6 @@ from handlers.mcp_handler import _list_mcp_server_tools_logic_async
 from handlers.a2a_handler import _fetch_a2a_agent_card_logic_async
 
 # --- Cloud Function Definitions ---
-
-@https_fn.on_call(memory=options.MemoryOption.GB_1)
-@handle_exceptions_and_log
-def get_gofannon_tool_manifest(req: https_fn.CallableRequest):
-    return _get_gofannon_tool_manifest_logic(req)
-
 
 @https_fn.on_call(memory=options.MemoryOption.GB_1, timeout_sec=540)
 @handle_exceptions_and_log

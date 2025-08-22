@@ -1,33 +1,12 @@
 // src/services/agentService.js
 import { createCallable } from '../firebaseConfig';
 
-const getGofannonToolManifestCallable = createCallable('get_gofannon_tool_manifest');
 const deployAgentToVertexCallable = createCallable('deploy_agent_to_vertex');
 const executeQueryCallable = createCallable('executeQuery'); // Renamed
 const deleteVertexAgentCallable = createCallable('delete_vertex_agent');
 const checkVertexAgentDeploymentStatusCallable = createCallable('check_vertex_agent_deployment_status');
 const listMcpServerToolsCallable = createCallable('list_mcp_server_tools');
 const fetchA2AAgentCardCallable = createCallable('fetchA2AAgentCard');
-
-export const fetchGofannonTools = async () => {
-    try {
-        const result = await getGofannonToolManifestCallable();
-        if (result.data && result.data.success && Array.isArray(result.data.manifest)) {
-            return { success: true, manifest: result.data.manifest };
-        } else if (result.data && result.data.success) {
-            console.error("Gofannon manifest received, but 'manifest' is not an array:", result.data.manifest);
-            return { success: false, message: "Manifest format error: Expected an array of tools in the 'manifest' field." };
-        }
-        const errorMessage = result.data?.message || "Failed to fetch Gofannon tools due to an unknown error structure.";
-        console.error("Error fetching Gofannon tools from callable:", result.data);
-        return { success: false, message: errorMessage };
-
-    } catch (error) {
-        console.error("Error calling Gofannon tools callable function:", error);
-        const message = error.message || "An unexpected error occurred while fetching Gofannon tools.";
-        return { success: false, message: message };
-    }
-};
 
 export const listMcpServerTools = async (serverUrl, auth) => {
     try {
@@ -121,4 +100,4 @@ export const checkAgentDeploymentStatus = async (agentDocId) => {
         console.error("Error checking agent deployment status:", error);
         throw error;
     }
-};  
+};

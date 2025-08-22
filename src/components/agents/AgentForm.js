@@ -3,7 +3,6 @@ import React, {useState, useEffect} from 'react';
 import ToolSelector from '../tools/ToolSelector';
 import ChildAgentFormDialog from './ChildAgentFormDialog';
 import ExistingAgentSelectorDialog from './ExistingAgentSelectorDialog';
-import { fetchGofannonTools } from '../../services/agentService';
 import { AGENT_TYPES } from '../../constants/agentConstants';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -56,9 +55,6 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
     const [isExistingAgentSelectorOpen, setIsExistingAgentSelectorOpen] = useState(false);
     const [editingChild, setEditingChild] = useState(null);
 
-    const [availableGofannonTools, setAvailableGofannonTools] = useState([]);
-    const [loadingTools, setLoadingTools] = useState(false);
-    const [toolError, setToolError] = useState('');
     const [formError, setFormError] = useState('');
     const [nameError, setNameError] = useState('');
 
@@ -79,27 +75,6 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
             .map(st => st.mcpServerUrl);
         setUsedMcpServerUrls(Array.from(new Set(currentMcpServerUrls)));
     };
-
-    const handleRefreshGofannonTools = async () => {
-        setLoadingTools(true);
-        setToolError('');
-        try {
-            const result = await fetchGofannonTools();
-            if (result.success && Array.isArray(result.manifest)) {
-                setAvailableGofannonTools(result.manifest);
-            } else {
-                setToolError(result.message || "Could not load Gofannon tools.");
-            }
-        } catch (error) {
-            setToolError(`Critical failure fetching Gofannon tools: ${error.message}`);
-        } finally {
-            setLoadingTools(false);
-        }
-    };
-
-    useEffect(() => {
-        handleRefreshGofannonTools();
-    }, []);
 
     const handleNameChange = (event) => {
         const newName = event.target.value;
@@ -238,12 +213,8 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                                 <ToolSelector
                                     selectedTools={selectedTools}
                                     onSelectedToolsChange={handleSelectedToolsChange}
-                                    onRefreshGofannon={handleRefreshGofannonTools}
-                                    loadingGofannon={loadingTools}
-                                    gofannonError={toolError}
                                     onUsedCustomRepoUrlsChange={setUsedCustomRepoUrls}
                                     onUsedMcpServerUrlsChange={setUsedMcpServerUrls}
-                                    availableGofannonTools={availableGofannonTools}
                                 />
                             </Grid>
                         </>
@@ -315,7 +286,6 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
                 onClose={handleCloseChildForm}
                 onSave={handleSaveChildAgent}
                 childAgentData={editingChild}
-                availableGofannonTools={availableGofannonTools}
             />
             <ExistingAgentSelectorDialog
                 open={isExistingAgentSelectorOpen}
@@ -326,4 +296,4 @@ const AgentForm = ({ onSubmit, initialData = {}, isSaving = false }) => {
     );
 };
 
-export default AgentForm;  
+export default AgentForm;

@@ -17,9 +17,6 @@ import ToolSetupDialog from './ToolSetupDialog';
 import McpAuthDialog from './McpAuthDialog'; // New Auth Dialog
 import { listMcpServerTools } from '../../services/agentService'; // New service import
 
-
-// PREDEFINED_ADK_FUNCTION_TOOLS removed
-
 const getRawManifestUrl = (repoUrlWithOptionalRef) => {
     if (!repoUrlWithOptionalRef) return null;
     const trimmedUrl = repoUrlWithOptionalRef.trim();
@@ -60,13 +57,8 @@ const getRawManifestUrl = (repoUrlWithOptionalRef) => {
 
 
 const ToolSelector = ({
-                          availableGofannonTools,
                           selectedTools,
                           onSelectedToolsChange,
-                          onRefreshGofannon,
-                          loadingGofannon,
-                          gofannonError,
-                          // isCodeExecutionMode removed
                           onUsedCustomRepoUrlsChange,
                           onUsedMcpServerUrlsChange // New prop
                       }) => {
@@ -88,7 +80,6 @@ const ToolSelector = ({
 
 
     const allDisplayableTools = useMemo(() => {
-        const gofannonWithSource = (availableGofannonTools || []).map(t => ({ ...t, sourceRepoUrl: 'gofannon_official', type: 'gofannon' }));
         const customToolsWithSource = loadedCustomRepos.reduce((acc, repo) => {
             if (repo.tools) {
                 repo.tools.forEach(t => acc.push({ ...t, sourceRepoUrl: repo.url, type: 'custom_repo' }));
@@ -108,8 +99,8 @@ const ToolSelector = ({
             }
             return acc;
         }, []);
-        return [...gofannonWithSource, ...customToolsWithSource, ...mcpToolsWithSource];
-    }, [availableGofannonTools, loadedCustomRepos, loadedMcpServers]);
+        return [...customToolsWithSource, ...mcpToolsWithSource];
+    }, [loadedCustomRepos, loadedMcpServers]);
 
     const groupedDisplayableTools = useMemo(() => {
         if (!allDisplayableTools || allDisplayableTools.length === 0) {
@@ -117,17 +108,7 @@ const ToolSelector = ({
         }
         return allDisplayableTools.reduce((acc, tool) => {
             let groupName = 'Uncategorized';
-            if (tool.type === 'gofannon') {
-                const modulePath = tool.module_path || '';
-                const lastDotIndex = modulePath.lastIndexOf('.');
-                if (lastDotIndex !== -1) {
-                    groupName = `Gofannon: ${modulePath.substring(0, lastDotIndex)}`;
-                } else if (modulePath) {
-                    groupName = `Gofannon Module: ${modulePath}`;
-                } else {
-                    groupName = 'Gofannon: Other';
-                }
-            } else if (tool.type === 'custom_repo') {
+            if (tool.type === 'custom_repo') {
                 try {
                     let displayUrl = tool.sourceRepoUrl;
                     if (tool.sourceRepoUrl.startsWith('http')) {
@@ -269,16 +250,16 @@ const ToolSelector = ({
             newSelectedTools = selectedTools.filter(st => st.id !== toolManifestEntry.id);
         } else {
             let toolBaseData;
-            const sourceRepoUrlForBackend = toolManifestEntry.sourceRepoUrl; // For Gofannon/Custom
+            const sourceRepoUrlForBackend = toolManifestEntry.sourceRepoUrl; // For Custom
 
-            if (toolTypeFromManifest === 'gofannon' || toolTypeFromManifest === 'custom_repo') {
+            if (toolTypeFromManifest === 'custom_repo') {
                 toolBaseData = {
                     id: toolManifestEntry.id,
                     name: toolManifestEntry.name,
                     module_path: toolManifestEntry.module_path,
                     class_name: toolManifestEntry.class_name,
                     type: toolTypeFromManifest,
-                    ...(toolTypeFromManifest === 'custom_repo' && { sourceRepoUrl: sourceRepoUrlForBackend })
+                    sourceRepoUrl: sourceRepoUrlForBackend
                 };
             } else if (toolTypeFromManifest === 'mcp') { // Handle MCP tools
                 toolBaseData = {
@@ -295,7 +276,7 @@ const ToolSelector = ({
                 return;
             }
 
-            if ((toolTypeFromManifest === 'gofannon' || toolTypeFromManifest === 'custom_repo') && toolManifestEntry.setup_parameters && toolManifestEntry.setup_parameters.length > 0) {
+            if (toolTypeFromManifest === 'custom_repo' && toolManifestEntry.setup_parameters && toolManifestEntry.setup_parameters.length > 0) {
                 openSetupDialog(toolManifestEntry, null);
                 return;
             } else {
@@ -378,29 +359,15 @@ const ToolSelector = ({
             <Accordion defaultExpanded={false} sx={{ '&.MuiAccordion-root:before': { display: 'none' }, boxShadow: 'none', borderBottom: '1px solid', borderColor: 'divider'}}>
                 <AccordionSummary
                     expandIcon={<ExpandMoreIcon />}
-                    aria-controls="gofannon-tools-content"
-                    id="gofannon-tools-header"
-                    sx={{ flexDirection: 'row-reverse', '& .MuiAccordionSummary-content': { justifyContent: 'space-between', alignItems: 'center', ml: 1 } }}
+                    aria-controls="custom-tools-content"
+                    id="custom-tools-header"
                 >
-                    <Typography variant="h6" component="h3">Gofannon & Custom Repo Tools</Typography>
-                    <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={(e) => { e.stopPropagation(); onRefreshGofannon(); }}
-                        disabled={loadingGofannon}
-                        startIcon={loadingGofannon ? <CircularProgress size={16} /> : <RefreshIcon />}
-                        sx={{ order: 2 }}
-                    >
-                        {loadingGofannon ? 'Refreshing Gofannon...' : 'Refresh Gofannon'}
-                    </Button>
+                    <Typography variant="h6" component="h3">Custom Repo Tools</Typography>
                 </AccordionSummary>
                 <AccordionDetails sx={{pt:0}}>
-                    {gofannonError && <Alert severity="error" sx={{ mb: 1 }}>{gofannonError}</Alert>}
-                    {loadingGofannon && <Box sx={{display:'flex', justifyContent:'center', my:2}}><CircularProgress size={24} /></Box>}
-
-                    {!loadingGofannon && Object.keys(groupedDisplayableTools).filter(group => !group.startsWith("MCP Server:")).length > 0 ? (
+                    {Object.keys(groupedDisplayableTools).filter(group => group.startsWith("Custom Repo:")).length > 0 ? (
                         Object.entries(groupedDisplayableTools)
-                            .filter(([groupName]) => !groupName.startsWith("MCP Server:"))
+                            .filter(([groupName]) => groupName.startsWith("Custom Repo:"))
                             .sort(([groupA], [groupB]) => groupA.localeCompare(groupB))
                             .map(([groupName, toolsInGroup]) => (
                                 <Box key={groupName} sx={{ mb: 2 }}>
@@ -447,20 +414,20 @@ const ToolSelector = ({
                                 </Box>
                             ))
                     ) : (
-                        !loadingGofannon && <Typography variant="body2" color="text.secondary">No Gofannon or custom repo tools loaded. Click refresh or add a custom repo.</Typography>
+                        <Typography variant="body2" color="text.secondary">No custom repo tools loaded. Add a custom repo below.</Typography>
                     )}
                 </AccordionDetails>
             </Accordion>
 
             <Accordion sx={{ '&.MuiAccordion-root:before': { display: 'none' }, boxShadow: 'none', borderBottom: '1px solid', borderColor: 'divider'}}>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />} aria-controls="custom-tool-repo-content" id="custom-tool-repo-header" >
-                    <Typography variant="h6" component="h3">Load Gofannon Tools from Custom Git Repo</Typography>
+                    <Typography variant="h6" component="h3">Load Tools from Custom Git Repo</Typography>
                 </AccordionSummary>
                 <AccordionDetails>
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 2}}>
                         <TextField fullWidth label="Git Repository URL (HTTPS)" variant="outlined" size="small" value={customRepoUrlInput} onChange={(e) => setCustomRepoUrlInput(e.target.value)} placeholder="e.g., https://github.com/user/repo.git or ...@commit_hash" disabled={loadingCustomRepo}/>
                         <Button variant="contained" onClick={handleLoadCustomRepo} disabled={loadingCustomRepo || !customRepoUrlInput.trim()} startIcon={loadingCustomRepo ? <CircularProgress size={16} /> : <AddCircleOutlineIcon />} >
-                            Load Gofannon Tools
+                            Load Tools
                         </Button>
                     </Box>
                     <FormHelperText>
@@ -533,10 +500,9 @@ const ToolSelector = ({
                         {selectedTools.map(st => (
                             <Typography component="li" variant="body2" key={st.id} color="text.secondary">
                                 {getToolDisplayName(st)} ({
-                                st.type === 'gofannon' ? `Gofannon${st.configuration ? ' (Configured)' : ''}` :
-                                    st.type === 'custom_repo' ? `Custom Repo${st.configuration ? ' (Configured)' : ''}` :
-                                        st.type === 'mcp' ? `MCP${st.auth ? ' (Authenticated)' : ''}` :
-                                            st.type || 'Unknown'
+                                st.type === 'custom_repo' ? `Custom Repo${st.configuration ? ' (Configured)' : ''}` :
+                                    st.type === 'mcp' ? `MCP${st.auth ? ' (Authenticated)' : ''}` :
+                                        st.type || 'Unknown'
                             })
                             </Typography>
                         ))}
@@ -556,4 +522,4 @@ const ToolSelector = ({
     );
 };
 
-export default ToolSelector;  
+export default ToolSelector;
