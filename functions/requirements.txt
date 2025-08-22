@@ -1,8 +1,7 @@
 firebase_functions>=0.2.0
 firebase-admin
-google-cloud-aiplatform[adk,agent_engines]==1.98.0
-# Version pinned until https://github.com/google/adk-python/issues/2361 is resolved
-google-adk==1.7.0
+google-adk>=1.12.0
+google-cloud-aiplatform[agent_engines]>=1.110.0
 google-cloud-tasks>=2.15.0
 google-cloud-storage>=2.0.0
 google-cloud-logging>=3.0.0
@@ -11,10 +10,5 @@ PyPDF>=5.6.0
 httpx>=0.27.0
 a2a-sdk>=0.2.16
 PyGithub
-#mcp>=1.9.5 # required functionality coming in 1.9.5
-# Version bump on json schema- bug in MCP
-# https://github.com/modelcontextprotocol/python-sdk/blob/main/pyproject.toml#L34
-# ^^ that line needs to be >= 4.20.0 (in liteLLM its >= 4.22.0)
-# temp hack is commit hash 0b11bdb6297ce (last before bug introduced)
-git+https://github.com/modelcontextprotocol/python-sdk
+mcp>=1.13.1
 aiohttp
