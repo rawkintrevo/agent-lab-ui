@@ -10,7 +10,6 @@ CORS_ORIGINS = [
 ]
 
 # --- Global Constants ---
-GOFANNON_MANIFEST_URL = "https://raw.githubusercontent.com/The-AI-Alliance/gofannon/main/manifest.json"
 
 def get_gcp_project_config():
     """
@@ -38,4 +37,4 @@ def get_gcp_project_config():
     logger.info(f"Using Project ID: {project_id}, Location: {location}, Staging Bucket: {staging_bucket}")
     return project_id, location, staging_bucket
 
-__all__ = ['CORS_ORIGINS', 'GOFANNON_MANIFEST_URL', 'get_gcp_project_config']
+__all__ = ['CORS_ORIGINS', 'get_gcp_project_config']
