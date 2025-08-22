@@ -63,7 +63,6 @@ def _deploy_agent_to_vertex_logic(req: https_fn.CallableRequest):
 
     requirements_list = [
         "google-cloud-aiplatform[adk,agent_engines]>=1.93.1",
-        "gofannon",
         "litellm>=1.72.0"
     ]
     custom_repo_urls = agent_config_data.get("usedCustomRepoUrls", [])

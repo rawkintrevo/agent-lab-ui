@@ -44,10 +44,6 @@ const ChildAgentFormDialog = ({
                                   onClose,
                                   onSave,
                                   childAgentData,
-                                  availableGofannonTools,
-                                  loadingGofannon,
-                                  gofannonError,
-                                  onRefreshGofannon
                               }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -266,7 +262,7 @@ const ChildAgentFormDialog = ({
         }
 
         const adkReadyTools = (childDataToSave.tools || []).map(tool => {
-            if (tool.type === 'gofannon' || tool.type === 'custom_repo') {
+            if (tool.type === 'custom_repo') {
                 const { sourceRepoUrl, type, ...adkToolProps } = tool;
                 return adkToolProps;
             }
@@ -434,13 +430,8 @@ const ChildAgentFormDialog = ({
                             {/* Code Execution Checkbox Removed */}
                             <Grid item xs={12}>
                                 <ToolSelector
-                                    availableGofannonTools={availableGofannonTools}
                                     selectedTools={selectedTools}
                                     onSelectedToolsChange={handleSelectedToolsChange}
-                                    onRefreshGofannon={onRefreshGofannon}
-                                    loadingGofannon={loadingGofannon}
-                                    gofannonError={gofannonError}
-                                    // isCodeExecutionMode removed
                                     onUsedCustomRepoUrlsChange={handleUsedCustomRepoUrlsChange}
                                     onUsedMcpServerUrlsChange={handleUsedMcpServerUrlsChange} // New prop
                                 />
@@ -465,4 +456,4 @@ const ChildAgentFormDialog = ({
     );
 };
 
-export default ChildAgentFormDialog;  
+export default ChildAgentFormDialog;

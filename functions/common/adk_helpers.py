@@ -150,10 +150,6 @@ async def _prepare_agent_kwargs_from_config(merged_agent_and_model_config, adk_a
     logger.debug(f"user_defined_tools_config for agent '{adk_agent_name}': {user_defined_tools_config}")
     for tc_idx, tc in enumerate(user_defined_tools_config):
         tool_type = tc.get('type')
-        if tool_type is None and tc.get('module_path') and tc.get('class_name'):
-            tool_type = 'gofannon'
-            tc['type'] = 'gofannon'
-            logger.info(f"Auto-detected tool type 'gofannon' for tool with module_path: {tc.get('module_path')}")
 
         if tool_type == 'mcp':
             server_url = tc.get('mcpServerUrl')
@@ -171,7 +167,7 @@ async def _prepare_agent_kwargs_from_config(merged_agent_and_model_config, adk_a
                 logger.info(f"Queued MCP tool '{tool_name_on_server}' from server '{server_url}' (Auth: {bool(auth_config_from_ui)}) for agent '{adk_agent_name}'.")
             else:
                 logger.warn(f"Skipping MCP tool for agent '{adk_agent_name}' due to missing mcpServerUrl or mcpToolName: {tc}")
-        elif tool_type == 'gofannon' or tool_type == 'custom_repo':
+        elif tool_type == 'custom_repo':
             try:
                 tool_instance = instantiate_tool(tc)
                 instantiated_tools.append(tool_instance)
@@ -346,7 +342,7 @@ async def _prepare_agent_kwargs_from_config(merged_agent_and_model_config, adk_a
     return {k: v for k, v in agent_kwargs.items() if v is not None}
 
 def instantiate_tool(tool_config):
-    logger.info(f"Attempting to instantiate Gofannon/Custom tool: {tool_config.get('id', 'N/A')}")
+    logger.info(f"Attempting to instantiate Custom tool: {tool_config.get('id', 'N/A')}")
     if not isinstance(tool_config, dict):
         raise ValueError(f"Tool configuration must be a dictionary, got {type(tool_config)}")
 
@@ -354,8 +350,8 @@ def instantiate_tool(tool_config):
     class_name = tool_config.get("class_name")
     tool_type = tool_config.get("type")
 
-    if not (tool_type == 'gofannon' or tool_type == 'custom_repo'):
-        raise ValueError(f"instantiate_tool received unexpected tool type: {tool_type}. Expected 'gofannon' or 'custom_repo'.")
+    if tool_type != 'custom_repo':
+        raise ValueError(f"instantiate_tool received unexpected tool type: {tool_type}. Expected 'custom_repo'.")
 
     if module_path and class_name:
         try:
@@ -370,10 +366,9 @@ def instantiate_tool(tool_config):
             instance = ToolClass(**instance_specific_kwargs)
 
             # If the tool has an 'export_to_adk' method, call it.
-            # This is a convention for Gofannon tools primarily.
             if hasattr(instance, 'export_to_adk') and callable(instance.export_to_adk):
                 adk_tool_spec = instance.export_to_adk()
-                tool_source_type = "Gofannon-compatible tool" if tool_type == 'gofannon' else "Custom Repository tool"
+                tool_source_type = "Custom Repository tool"
                 logger.info(f"Successfully instantiated and exported {tool_source_type} '{tool_config.get('id', class_name)}' to ADK spec.")
                 return adk_tool_spec
             else:
@@ -388,7 +383,7 @@ def instantiate_tool(tool_config):
                 logger.error(f"Error instantiating tool '{tool_id_for_log}': {e}\n{traceback.format_exc()}")
             raise ValueError(f"Error instantiating tool {tool_id_for_log}: {e}")
     else:
-        raise ValueError(f"Unsupported or incomplete tool configuration for Gofannon/Custom tool ID '{tool_config.get('id', 'N/A')}' (type: {tool_type}). Missing module_path/class_name.")
+        raise ValueError(f"Unsupported or incomplete tool configuration for Custom tool ID '{tool_config.get('id', 'N/A')}' (type: {tool_type}). Missing module_path/class_name.")
 
 
 def sanitize_adk_agent_name(name_str: str, prefix_if_needed: str = "agent_") -> str:
