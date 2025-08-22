@@ -191,6 +191,9 @@ const ChatPage = ({ isReadOnly = false }) => {
     const [snackbar, setSnackbar] = useState({ open: false, message: "" });
     const [unsharing, setUnsharing] = useState(false);
 
+    // New state to cache content fetched from events
+    const [messageContentCache, setMessageContentCache] = useState({});
+
     // Handler for unshare:
     const handleUnshare = async () => {
         if (!shareId) return;
@@ -286,6 +289,66 @@ const ChatPage = ({ isReadOnly = false }) => {
                 .catch(console.error);
         }
     }, [effectiveChatId, isReadOnly, config]);
+
+    // Effect to fetch message content from events for assistant messages
+    useEffect(() => {
+        const fetchContentForMessage = async (msg) => {
+            try {
+                const events = await firebaseService.getEventsForMessage(effectiveChatId, msg.id);
+                let aggregatedText = '';
+
+                if (events && events.length > 0) {
+                    events.sort((a, b) => (a.eventIndex || 0) - (b.eventIndex || 0));
+                    for (const event of events) {
+                        if (event.content) {
+                            if (typeof event.content === 'string') {
+                                aggregatedText += event.content;
+                            } else if (event.content.parts && Array.isArray(event.content.parts)) {
+                                for (const part of event.content.parts) {
+                                    if (part && typeof part.text === 'string') {
+                                        aggregatedText += part.text;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Fallback for older messages that stored content directly on `msg.parts`
+                if (!aggregatedText) {
+                    const legacyText = (msg.parts || [])
+                        .filter(p => p && typeof p.text === 'string')
+                        .map(p => p.text)
+                        .join('');
+                    if (legacyText) {
+                        aggregatedText = legacyText;
+                    }
+                }
+
+                setMessageContentCache(prev => ({
+                    ...prev,
+                    [msg.id]: { status: 'loaded', content: aggregatedText }
+                }));
+            } catch (error) {
+                console.error(`Failed to fetch content for message ${msg.id}`, error);
+                setMessageContentCache(prev => ({
+                    ...prev,
+                    [msg.id]: { status: 'error', error: error.message }
+                }));
+            }
+        };
+
+        conversationPath.forEach(msg => {
+            const isAssistant = msg.participant?.startsWith('agent') || msg.participant?.startsWith('model');
+            // Only fetch for assistant messages that haven't been requested yet.
+            if (isAssistant && !messageContentCache[msg.id]) {
+                // Mark as loading to prevent re-fetching in subsequent renders
+                setMessageContentCache(prev => ({ ...prev, [msg.id]: { status: 'loading' } }));
+                fetchContentForMessage(msg); // Pass the whole message object for fallback logic
+            }
+        });
+    }, [conversationPath, effectiveChatId]);
+
 
     const handleFork = (msgId) => {
         if (isReadOnly) return;
@@ -566,6 +629,36 @@ const ChatPage = ({ isReadOnly = false }) => {
                                                     Thinking…
                                                 </Typography>
                                             </Box>
+                                        ) : isAssistant ? (
+                                            (() => {
+                                                const contentEntry = messageContentCache[msg.id];
+                                                if (!contentEntry || contentEntry.status === 'loading') {
+                                                    return (
+                                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                                            <LoadingSpinner small />
+                                                        </Box>
+                                                    );
+                                                }
+                                                if (contentEntry.status === 'error') {
+                                                    return <Typography variant="caption" color="error"><i>(Error loading content)</i></Typography>;
+                                                }
+                                                if (contentEntry.status === 'loaded') {
+                                                    if (contentEntry.content) {
+                                                        return (
+                                                            <ReactMarkdown components={muiMarkdownComponentsConfig} remarkPlugins={[remarkGfm]}>
+                                                                {contentEntry.content}
+                                                            </ReactMarkdown>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <Typography variant="caption" color="text.secondary">
+                                                                <i>(No text content in response)</i>
+                                                            </Typography>
+                                                        );
+                                                    }
+                                                }
+                                                return null;
+                                            })()
                                         ) : (
                                             (msg.parts || []).map((part, index) => {
                                                 if (part.text) {
