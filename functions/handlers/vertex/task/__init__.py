@@ -155,7 +155,7 @@ async def _run_adk_agent(local_adk_agent, adk_content_for_run, adk_user_id, assi
         logger.error(f"Error during ADK agent run for '{local_adk_agent.name}': {e_run}\n{traceback.format_exc()}")
         errors.append(f"Agent/Model run failed: {str(e_run)}")
 
-    #logger.info(f"[_run_adk_agent] Collected {len(all_events)} events from the ADK agent run.")
+    logger.info(f"[_run_adk_agent] Collected {len(all_events)} events from the ADK agent run.")
     # Step 2: Write all collected events to Firestore in a batch for efficiency
     batch = db.batch()
     for index, event_dict in enumerate(all_events):
@@ -165,7 +165,8 @@ async def _run_adk_agent(local_adk_agent, adk_content_for_run, adk_user_id, assi
     if all_events:
         batch.commit()
 
-
+    for event in all_events:
+        logger.info(f"[_run_adk_agent] event: {event}")
     # Step 3: Find the final response from the collected events
     final_parts = []
     final_model_response_event = next(
@@ -181,6 +182,17 @@ async def _run_adk_agent(local_adk_agent, adk_content_for_run, adk_user_id, assi
         content = final_model_response_event.get("content", {})
         if content and content.get("parts"):
             final_parts = content.get("parts")
+            # Check for and extract reasoning_content (thought summary)
+            reasoning_text = content.get("reasoning_content")
+            if reasoning_text and final_parts:
+                logger.info(f"Found reasoning content: '{reasoning_text[:100]}...'")
+                # Find the first part with text and attach the thought to it.
+                thought_attached = False
+                for part in final_parts:
+                    if isinstance(part, dict) and "text" in part and not thought_attached:
+                        part["thought"] = reasoning_text
+                        thought_attached = True
+                        logger.info("Attached reasoning content as 'thought' to the first text part.")
     else:
         logger.warn("[_run_adk_agent] No final model response event found in the collected events.")
 
@@ -230,6 +242,9 @@ async def _run_vertex_agent(resource_name, adk_content_for_run, adk_user_id, ass
         batch.set(event_doc_ref, event_with_meta)
     if all_events:
         batch.commit()
+
+    for event in all_events:
+        logger.info(f"[_run_adk_agent] event: {event}")
 
     # Step 3: Find the final response from the collected events
     final_parts = []

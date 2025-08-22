@@ -288,23 +288,19 @@ async def _prepare_agent_kwargs_from_config(merged_agent_and_model_config, adk_a
                 logger.warn(f"WatsonX deployment model used for {adk_agent_name} but space_id not found. Deployment may fail or use default space.")
 
 
-    actual_model_for_adk = LiteLlm(**model_constructor_kwargs)
-
-    agent_kwargs = {
-        "name": adk_agent_name,
-        "description": merged_agent_and_model_config.get("description"),
-        "model": actual_model_for_adk,
-        "instruction": merged_agent_and_model_config.get("systemInstruction"),
-        "tools": instantiated_tools,
-        "output_key": merged_agent_and_model_config.get("outputKey"),
-    }
-
-    # --- Collect parameters for GenerateContentConfig ---
-    model_params = merged_agent_and_model_config
+    # --- Collect parameters for GenerateContentConfig and LiteLLM ---
+    parameters_field = merged_agent_and_model_config.get("parameters", {})
     generate_config_kwargs = {}
 
-    # Use parameters field for generation config if present
-    parameters_field = merged_agent_and_model_config.get("parameters", {})
+    # Add support for LiteLLM reasoning/thinking parameter
+    reasoning_effort_val = parameters_field.get("reasoning_effort")
+    if reasoning_effort_val:
+        # List of providers that support the reasoning parameter, based on LiteLLM docs and our config
+        supported_providers = {"anthropic", "bedrock", "deepseek", "google_ai_studio", "mistral"}
+        if selected_provider_id in supported_providers and isinstance(reasoning_effort_val, str):
+            logger.info(f"Enabling LiteLLM reasoning for provider '{selected_provider_id}' with effort '{reasoning_effort_val}'.")
+            # Pass this to the LiteLlm constructor, assuming it forwards it to litellm.completion
+            model_constructor_kwargs["reasoning_effort"] = reasoning_effort_val
 
     # Recursive helper to flatten parameters for known keys
     def flatten_parameters(params, prefix=''):
@@ -337,8 +333,20 @@ async def _prepare_agent_kwargs_from_config(merged_agent_and_model_config, adk_a
         try: generate_config_kwargs["top_k"] = int(flat_params["topK"])
         except (ValueError, TypeError): logger.warn(f"Invalid topK: {flat_params['topK']}")
 
-    if "stopSequences" in model_params and isinstance(model_params["stopSequences"], list):
-        generate_config_kwargs["stop_sequences"] = [str(seq) for seq in model_params["stopSequences"]]
+    if "stopSequences" in flat_params and isinstance(flat_params["stopSequences"], list):
+        generate_config_kwargs["stop_sequences"] = [str(seq) for seq in flat_params["stopSequences"]]
+
+    actual_model_for_adk = LiteLlm(**model_constructor_kwargs)
+
+    agent_kwargs = {
+        "name": adk_agent_name,
+        "description": merged_agent_and_model_config.get("description"),
+        "model": actual_model_for_adk,
+        "instruction": merged_agent_and_model_config.get("systemInstruction"),
+        "tools": instantiated_tools,
+        "output_key": merged_agent_and_model_config.get("outputKey"),
+    }
+    
     if generate_config_kwargs:
         logger.info(f"Agent '{adk_agent_name}' has model generation parameters: {generate_config_kwargs}")
         agent_kwargs["generate_content_config"] = genai_types.GenerateContentConfig(**generate_config_kwargs)
