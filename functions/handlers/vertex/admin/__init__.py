@@ -13,11 +13,11 @@ import os
 from common.core import db, logger
 from common.config import get_gcp_project_config
 from common.utils import initialize_vertex_ai
-from common.adk_helpers import (
-    generate_vertex_deployment_display_name,
-    instantiate_adk_agent_from_config,
-    BACKEND_LITELLM_PROVIDER_CONFIG
-)
+from common.adk_helpers import generate_vertex_deployment_display_name
+# UPDATED IMPORT: Pointing to the new refactored agent builder
+from common.agents import instantiate_adk_agent_from_config
+from common.agents.llm_config import BACKEND_LITELLM_PROVIDER_CONFIG
+
 
 # --- Deployment Logic ---
 
