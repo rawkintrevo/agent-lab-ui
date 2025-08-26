@@ -1,5 +1,5 @@
 // src/hooks/useChatManager.js
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import * as chatService from '../services/chatService';
 import { getAgentsForProjects } from '../services/agentFirestoreService';
 import { getModelsForProjects } from '../services/modelService';
@@ -15,6 +15,7 @@ export const useChatManager = (chatId, sharedChatId) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [messageContentCache, setMessageContentCache] = useState({});
+    const eventListeners = useRef(new Map());
 
     const conversationPath = useMemo(() => {
         if (!messagesMap || !activeLeafMsgId) return [];
@@ -69,44 +70,59 @@ export const useChatManager = (chatId, sharedChatId) => {
         setupListener();
         return () => {
             if (unsubscribe) unsubscribe();
+            // Clean up all event listeners on unmount
+            eventListeners.current.forEach(unsub => unsub());
+            eventListeners.current.clear();
         };
     }, [chatId, sharedChatId]);
 
+    //
+    // --- THIS IS THE MODIFIED SECTION ---
+    //
+    // This effect now manages real-time listeners for message events.
     useEffect(() => {
-        const fetchContentForMessage = async (msg) => {
-            try {
-                const events = await chatService.getEventsForMessage(effectiveChatId, msg.id);
-                let aggregatedText = '';
-                if (events?.length > 0) {
-                    events.sort((a, b) => (a.eventIndex || 0) - (b.eventIndex || 0));
-                    events.forEach(event => {
-                        if (typeof event.content === 'string') {
-                            aggregatedText += event.content;
-                        } else if (event.content?.parts) {
-                            event.content.parts.forEach(part => {
-                                if (part?.text) aggregatedText += part.text;
-                            });
-                        }
-                    });
-                }
-                if (!aggregatedText) {
-                    const legacyText = (msg.parts || []).filter(p => p?.text).map(p => p.text).join('');
-                    if (legacyText) aggregatedText = legacyText;
-                }
-                setMessageContentCache(prev => ({ ...prev, [msg.id]: { status: 'loaded', content: aggregatedText } }));
-            } catch (error) {
-                setMessageContentCache(prev => ({ ...prev, [msg.id]: { status: 'error', error: error.message } }));
-            }
-        };
+        const currentMessageIds = new Set(conversationPath.map(msg => msg.id));
 
+        // Subscribe to events for new assistant messages in the path
         conversationPath.forEach(msg => {
             const isAssistant = msg.participant?.startsWith('agent') || msg.participant?.startsWith('model');
-            if (isAssistant && !messageContentCache[msg.id]) {
+            if (isAssistant && !eventListeners.current.has(msg.id)) {
                 setMessageContentCache(prev => ({ ...prev, [msg.id]: { status: 'loading' } }));
-                fetchContentForMessage(msg);
+
+                const unsubscribe = chatService.listenToMessageEvents(effectiveChatId, msg.id, (events, err) => {
+                    if (err) {
+                        setMessageContentCache(prev => ({ ...prev, [msg.id]: { status: 'error', error: err.message } }));
+                        return;
+                    }
+
+                    let aggregatedText = '';
+                    if (events?.length > 0) {
+                        events.forEach(event => {
+                            if (typeof event.content === 'string') {
+                                aggregatedText += event.content;
+                            } else if (event.content?.parts) {
+                                event.content.parts.forEach(part => {
+                                    if (part?.text) aggregatedText += part.text;
+                                });
+                            }
+                        });
+                    }
+                    setMessageContentCache(prev => ({ ...prev, [msg.id]: { status: 'loaded', content: aggregatedText } }));
+                });
+                eventListeners.current.set(msg.id, unsubscribe);
             }
         });
-    }, [conversationPath, effectiveChatId, messageContentCache]);
+
+        // Unsubscribe from messages that are no longer in the active path
+        eventListeners.current.forEach((unsubscribe, msgId) => {
+            if (!currentMessageIds.has(msgId)) {
+                unsubscribe();
+                eventListeners.current.delete(msgId);
+            }
+        });
+
+    }, [conversationPath, effectiveChatId]);
+    // --- END OF MODIFIED SECTION ---
 
     return {
         chat, messagesMap, activeLeafMsgId, conversationPath, agents, models,

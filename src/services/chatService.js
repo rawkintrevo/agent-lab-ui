@@ -158,6 +158,20 @@ export const getEventsForMessage = async (chatId, messageId) => {
     return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
+// NEW FUNCTION to listen to events in real-time
+export const listenToMessageEvents = (chatId, messageId, onUpdate) => {
+    const q = query(collection(db, "chats", chatId, "messages", messageId, "events"), orderBy("eventIndex", "asc"));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const events = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        onUpdate(events);
+    }, (error) => {
+        console.error(`Error listening to message events for message ${messageId}:`, error);
+        onUpdate([], error);
+    });
+    return unsubscribe;
+};
+
+
 // --- Sharing ---
 export const shareChat = async (originalChatId) => {
     const originalRef = doc(db, "chats", originalChatId);
