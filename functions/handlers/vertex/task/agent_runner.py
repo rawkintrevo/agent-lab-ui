@@ -10,7 +10,7 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.memory import InMemoryMemoryService
 from google.adk.artifacts import InMemoryArtifactService
 from vertexai import agent_engines
-
+import collections.abc
 from common.core import db, logger
 
 
@@ -18,9 +18,14 @@ async def _run_agent_and_collect_events(agent_run_coroutine, events_collection_r
     """Generic runner that executes an agent, collects all events, and stores them in Firestore."""
     all_events, errors = [], []
     try:
-        async for event_obj in agent_run_coroutine:
-            event_dict = event_obj.model_dump() if hasattr(event_obj, 'model_dump') else event_obj
-            all_events.append(event_dict)
+        if isinstance(agent_run_coroutine, collections.abc.AsyncIterable):
+            async for event_obj in agent_run_coroutine:
+                event_dict = event_obj.model_dump() if hasattr(event_obj, 'model_dump') else event_obj
+                all_events.append(event_dict)
+        else:
+            for event_obj in agent_run_coroutine:
+                event_dict = event_obj.model_dump() if hasattr(event_obj, 'model_dump') else event_obj
+                all_events.append(event_dict)
     except Exception as e_run:
         logger.error(f"Error during agent run: {e_run}\n{traceback.format_exc()}")
         errors.append(f"Agent run failed: {str(e_run)}")
