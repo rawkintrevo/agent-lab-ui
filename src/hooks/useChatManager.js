@@ -72,6 +72,7 @@ export const useChatManager = (chatId, sharedChatId) => {
             if (unsubscribe) unsubscribe();
             // Clean up all event listeners on unmount
             eventListeners.current.forEach(unsub => unsub());
+            // eslint-disable-next-line
             eventListeners.current.clear();
         };
     }, [chatId, sharedChatId]);
