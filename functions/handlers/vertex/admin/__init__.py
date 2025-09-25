@@ -63,7 +63,7 @@ def _deploy_agent_to_vertex_logic(req: https_fn.CallableRequest):
 
     requirements_list = [
         "google-cloud-aiplatform[adk,agent_engines]>=1.93.1",
-        "litellm==1.76.1"
+        "litellm==1.76.1" # TODO: https://github.com/BerriAI/litellm/issues/14762
     ]
     custom_repo_urls = agent_config_data.get("usedCustomRepoUrls", [])
     if isinstance(custom_repo_urls, list):
